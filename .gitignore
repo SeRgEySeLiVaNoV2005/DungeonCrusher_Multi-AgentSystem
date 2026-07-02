@@ -1,26 +1,14 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-dist/
-build/
-*.egg
-
-# Virtual environment
-.venv/
-venv/
-env/
-
 # IDE
 .idea/
 .vscode/
-*.swp
-*.swo
 
-# Project data
-logs/*.log
-data/
+# Python virtualenv
+.venv/
+venv/
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Project data
+.pytest_cache/
