@@ -1,0 +1,44 @@
+# DungeonCrusher Multi-Agent System Configuration
+
+# Game window settings
+game:
+  window_title: "VK Play"
+  # Fallback window search keywords
+  window_keywords:
+    - "Dungeon"
+    - "Crusher"
+    - "Soul Hunters"
+
+# Screen capture settings
+capture:
+  # Target FPS for screen capture loop
+  target_fps: 10
+  # Monitor index (0 = primary)
+  monitor: 0
+
+# Input settings
+input:
+  # Delay between actions in seconds
+  action_delay: 0.05
+  # Double-click threshold in seconds
+  double_click_interval: 0.3
+
+# Vision settings
+vision:
+  # Template matching confidence threshold (0.0 - 1.0)
+  match_confidence: 0.8
+  # OCR language
+  ocr_lang: "eng"
+
+# Agent settings
+agents:
+  # Max number of concurrent child agents
+  max_children: 8
+  # Child agent decision timeout in seconds
+  decision_timeout: 1.0
+
+# Logging
+logging:
+  level: "INFO"
+  format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+  file: "logs/system.log"
