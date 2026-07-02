@@ -1,0 +1,163 @@
+"""OpenCV template matching — find UI elements on the game screen."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import List, Optional, Tuple
+
+import numpy as np
+
+from ..core.exceptions import VisionError
+from ..core.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class MatchResult:
+    """A detected template match on the screen."""
+
+    name: str
+    """Template file name (without extension)."""
+
+    x: int
+    y: int
+    """Center coordinates of the match."""
+
+    confidence: float
+    """Match confidence (0.0 – 1.0). Higher is better."""
+
+    bounds: Tuple[int, int, int, int]
+    """Bounding box (left, top, width, height)."""
+
+    @property
+    def center(self) -> Tuple[int, int]:
+        """(x, y) of the bounding-box center."""
+        left, top, w, h = self.bounds
+        return (left + w // 2, top + h // 2)
+
+
+class TemplateMatcher:
+    """Find pre-saved UI-element templates in a screenshot.
+
+    Templates are small PNG images stored under ``resources/templates/``.
+    Each file name (without extension) becomes the match ``name``.
+
+    Uses OpenCV ``TM_CCOEFF_NORMED`` which is robust to brightness changes.
+    """
+
+    def __init__(
+        self,
+        templates_dir: str = "resources/templates",
+        confidence: float = 0.8,
+    ) -> None:
+        """
+        Args:
+            templates_dir: Directory containing template ``.png`` files.
+            confidence: Minimum confidence threshold (0.0 – 1.0).
+        """
+        self._templates_dir = Path(templates_dir)
+        self._confidence = confidence
+        self._templates: dict[str, np.ndarray] = {}  # name → BGR array
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def load_templates(self) -> int:
+        """Load all templates from the templates directory into memory.
+
+        Returns:
+            Number of templates loaded.
+        """
+        try:
+            import cv2
+        except ImportError as exc:
+            raise VisionError(
+                "OpenCV is required for template matching. "
+                "Install: pip install opencv-python"
+            ) from exc
+
+        self._templates.clear()
+        for png_path in self._templates_dir.glob("*.png"):
+            template = cv2.imread(str(png_path), cv2.IMREAD_COLOR)
+            if template is None:
+                logger.warning(f"Could not read template: {png_path}")
+                continue
+            name = png_path.stem
+            self._templates[name] = template
+            logger.debug(f"Loaded template '{name}' ({template.shape[1]}x{template.shape[0]}px)")
+
+        logger.info(f"Loaded {len(self._templates)} templates")
+        return len(self._templates)
+
+    def find_all(self, screenshot: np.ndarray) -> List[MatchResult]:
+        """Find *all* templates in a screenshot.
+
+        Args:
+            screenshot: BGR image as a numpy array (H×W×C).
+
+        Returns:
+            List of matches, sorted by confidence (highest first).
+        """
+        try:
+            import cv2
+        except ImportError as exc:
+            raise VisionError(
+                "OpenCV is required for template matching. "
+                "Install: pip install opencv-python"
+            ) from exc
+
+        if not self._templates:
+            self.load_templates()
+
+        results: List[MatchResult] = []
+
+        for name, template in self._templates.items():
+            th, tw = template.shape[:2]
+            sh, sw = screenshot.shape[:2]
+
+            if th > sh or tw > sw:
+                logger.debug(f"Template '{name}' is larger than screenshot; skipping")
+                continue
+
+            result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
+
+            # Find all matches above threshold.
+            locations = np.where(result >= self._confidence)
+            scores = result[locations]
+
+            # Non-max suppression: group nearby matches.
+            used = set()
+            for _, (y, x, score) in sorted(
+                zip(locations[1], locations[0], scores),
+                key=lambda t: t[2],
+                reverse=True,
+            ):
+                # Skip if too close to an already-reported match.
+                key = (y // th, x // tw)
+                if key in used:
+                    continue
+                used.add(key)
+
+                results.append(
+                    MatchResult(
+                        name=name,
+                        x=x + tw // 2,
+                        y=y + th // 2,
+                        confidence=float(score),
+                        bounds=(x, y, tw, th),
+                    )
+                )
+
+        results.sort(key=lambda r: r.confidence, reverse=True)
+        return results
+
+    def find(self, screenshot: np.ndarray, template_name: str) -> Optional[MatchResult]:
+        """Find a single template by name. Returns the best match or ``None``."""
+        matches = self.find_all(screenshot)
+        for m in matches:
+            if m.name == template_name:
+                return m
+        return None
