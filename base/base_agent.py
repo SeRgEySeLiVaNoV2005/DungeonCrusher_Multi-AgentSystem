@@ -7,9 +7,9 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Optional
 
-from ..communication.message_bus import Message, MessageBus, MessageType
-from ..core.exceptions import AgentLifecycleError
-from ..core.logger import get_logger
+from src.communication.message_bus import Message, MessageBus, MessageType
+from src.core.exceptions import AgentLifecycleError
+from src.core.logger import get_logger
 
 logger = get_logger(__name__)
 

@@ -14,9 +14,9 @@ import sys
 import time
 from typing import List, Optional
 
-from ..agent.child_agent import ChildAgent
-from ..agent.parent_agent import ParentAgent
-from ..communication.message_bus import MessageBus
+from parent.parent_agent import ParentAgent
+from base.child_agent import ChildAgent
+from src.communication.message_bus import MessageBus
 from ..core.config import Settings, load_config
 from ..core.exceptions import DungeonCrusherError
 from ..core.logger import get_logger, setup_logging
@@ -133,7 +133,7 @@ class SystemLauncher:
         """
         # Stub: a watcher agent that just logs frames.
         # Uncomment when you're ready to add real agents:
-        # from agents.stubs import WatcherAgent
+        # from watcher.watcher_agent import WatcherAgent
         # self._children.append(WatcherAgent("watcher", self._bus))
         pass
 

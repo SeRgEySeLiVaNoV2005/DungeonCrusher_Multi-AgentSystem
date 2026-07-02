@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Optional
 
-from ..communication.message_bus import Message, MessageBus, MessageType
-from ..core.logger import get_logger
-from ..input.emulator import Action
-from .base_agent import BaseAgent
+from base.base_agent import BaseAgent
+from src.communication.message_bus import Message, MessageBus, MessageType
+from src.core.logger import get_logger
+from src.input.emulator import Action
 
 logger = get_logger(__name__)
 

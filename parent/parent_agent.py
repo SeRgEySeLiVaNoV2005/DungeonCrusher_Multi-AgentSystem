@@ -12,15 +12,15 @@ from __future__ import annotations
 import time
 from typing import Dict, List, Optional
 
-from ..capture.window_capturer import WindowCapturer
-from ..communication.message_bus import Message, MessageBus, MessageType
-from ..core.config import Settings
-from ..core.logger import get_logger
-from ..game_state.state import GameState, StateTracker
-from ..input.emulator import Action, InputEmulator
-from ..vision.ocr import OCREngine
-from ..vision.template_matcher import MatchResult, TemplateMatcher
-from .base_agent import BaseAgent
+from base.base_agent import BaseAgent
+from src.capture.window_capturer import WindowCapturer
+from src.communication.message_bus import Message, MessageBus, MessageType
+from src.core.config import Settings
+from src.core.logger import get_logger
+from src.game_state.state import GameState, StateTracker
+from src.input.emulator import Action, InputEmulator
+from src.vision.ocr import OCREngine
+from src.vision.template_matcher import MatchResult, TemplateMatcher
 
 logger = get_logger(__name__)
 

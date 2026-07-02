@@ -1,6 +1,6 @@
-"""Stub agents for testing and demonstration."""
+"""Watcher agent — passive debug observer for the frame pipeline."""
 
-from src.agent.child_agent import ChildAgent
+from base.child_agent import ChildAgent
 from src.communication.message_bus import Message, MessageType
 from src.core.logger import get_logger
 
