@@ -87,7 +87,7 @@ def agent(bus, matcher) -> AutomaticLevelingHeroesAgent:
         red_template="prokachka",
         gray_template="prokachka_gray",
         hire_template="HiringHero",
-        end_template="end",
+        end_template="End",
     )
     a = AutomaticLevelingHeroesAgent(
         name="test_leveling",
@@ -534,7 +534,7 @@ class TestEndOfListDetection:
         )
 
         def _find_one(screenshot, name):
-            if name == "end":
+            if name == "End":
                 return end_match
             return None
 
@@ -594,6 +594,93 @@ class TestEndOfListDetection:
         # Button found → LEVELING, not end.png self-transition.
         assert agent.leveling_state == LevelingState.LEVELING
         assert agent._scroll_direction == -1  # Still down, end didn't fire.
+
+
+# ---------------------------------------------------------------------------
+# Stop mechanism
+# ---------------------------------------------------------------------------
+
+
+class TestStopMechanism:
+    def _force_to_scanning(self, agent, matcher):
+        """Helper: force the agent into SCANNING state."""
+        from src.vision.template_matcher import MatchResult
+
+        matcher.find_one.return_value = MatchResult(
+            name="geroi", confidence=0.9, x=100, y=50,
+            bounds=(90, 40, 20, 20),
+        )
+        with patch(
+            "agents.automatic_leveling_heroes.automatic_leveling_heroes_agent._get_idle_seconds",
+            return_value=120.0,
+        ):
+            agent.on_frame(_message(_make_frame(_make_screenshot())))
+        agent.on_frame(_message(_make_frame(_make_screenshot())))
+        assert agent.leveling_state == LevelingState.SCANNING
+
+    def test_stop_command_resets_to_idle(self, agent, matcher, bus):
+        """SYSTEM_STOP_LEVELING forces agent to IDLE from any active state."""
+        self._force_to_scanning(agent, matcher)
+        assert agent.leveling_state == LevelingState.SCANNING
+
+        stop_msg = MagicMock()
+        stop_msg.type = MessageType.SYSTEM_STOP_LEVELING
+        stop_msg.payload = None
+        agent._on_stop_command(stop_msg)
+
+        assert agent.leveling_state == LevelingState.IDLE
+        assert agent._scroll_count == 0
+        assert agent._pass == 1
+        assert agent._scroll_direction == -1
+
+    def test_stop_command_from_leveling(self, agent, matcher, bus):
+        """SYSTEM_STOP_LEVELING works from LEVELING state too."""
+        self._force_to_scanning(agent, matcher)
+
+        from src.vision.template_matcher import MatchResult
+        matcher.find_one.return_value = MatchResult(
+            name="prokachka", confidence=0.85, x=600, y=300,
+            bounds=(590, 290, 20, 20),
+        )
+        agent.on_frame(_message(_make_frame(_make_screenshot())))
+        assert agent.leveling_state == LevelingState.LEVELING
+
+        stop_msg = MagicMock()
+        stop_msg.type = MessageType.SYSTEM_STOP_LEVELING
+        stop_msg.payload = None
+        agent._on_stop_command(stop_msg)
+
+        assert agent.leveling_state == LevelingState.IDLE
+
+    def test_stop_from_idle_is_noop(self, agent):
+        """Stopping from IDLE is harmless."""
+        assert agent.leveling_state == LevelingState.IDLE
+
+        stop_msg = MagicMock()
+        stop_msg.type = MessageType.SYSTEM_STOP_LEVELING
+        stop_msg.payload = None
+        agent._on_stop_command(stop_msg)
+
+        assert agent.leveling_state == LevelingState.IDLE
+
+    def test_levelup_after_stop_works(self, agent, matcher, bus):
+        """After stop, levelup can re-trigger the agent."""
+        self._force_to_scanning(agent, matcher)
+        assert agent.leveling_state == LevelingState.SCANNING
+
+        # Stop.
+        stop_msg = MagicMock()
+        stop_msg.type = MessageType.SYSTEM_STOP_LEVELING
+        stop_msg.payload = None
+        agent._on_stop_command(stop_msg)
+        assert agent.leveling_state == LevelingState.IDLE
+
+        # Re-trigger.
+        trigger_msg = MagicMock()
+        trigger_msg.type = MessageType.SYSTEM_TRIGGER_LEVELING
+        trigger_msg.payload = None
+        agent._on_force_trigger(trigger_msg)
+        assert agent.leveling_state == LevelingState.NAVIGATING
 
 
 # ---------------------------------------------------------------------------

@@ -362,6 +362,16 @@ class CommandOverlay:
             logger.info("[Overlay] Leveling trigger sent")
             return
 
+        # Special command: force-stop the leveling agent.
+        if text.strip().lower() == "stop":
+            self._bus.publish(Message(
+                type=MessageType.SYSTEM_STOP_LEVELING,
+                source="overlay",
+            ))
+            self._flash_label("LEVELING STOPPED", "#ff4444")
+            logger.info("[Overlay] Leveling stop sent")
+            return
+
         self._bus.publish(Message(
             type=MessageType.USER_COMMAND,
             source="overlay",

@@ -193,6 +193,10 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         self.bus.add_subscriber(
             self._on_force_trigger, MessageType.SYSTEM_TRIGGER_LEVELING
         )
+        # Manual stop from console (``stop`` command).
+        self.bus.add_subscriber(
+            self._on_stop_command, MessageType.SYSTEM_STOP_LEVELING
+        )
 
         logger.info(
             f"LevelingAgent '{self.name}' ready. "
@@ -210,6 +214,9 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         )
         self.bus.remove_subscriber(
             self._on_force_trigger, MessageType.SYSTEM_TRIGGER_LEVELING
+        )
+        self.bus.remove_subscriber(
+            self._on_stop_command, MessageType.SYSTEM_STOP_LEVELING
         )
         logger.info(
             f"LevelingAgent '{self.name}' stats — "
@@ -257,6 +264,15 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         """Manual trigger from console — force NAVIGATING."""
         logger.info("[Leveling] Manually triggered via console")
         self._fsm.force(LevelingState.NAVIGATING.value)
+
+    def _on_stop_command(self, message: Message) -> None:
+        """Manual stop from console — force IDLE."""
+        logger.info("[Leveling] Force-stopped via console")
+        self._scroll_count = 0
+        self._pass = 1
+        self._scroll_direction = -1
+        self._scrolled_to_top = False
+        self._fsm.force(LevelingState.IDLE.value)
 
     # ------------------------------------------------------------------
     # FSM setup
