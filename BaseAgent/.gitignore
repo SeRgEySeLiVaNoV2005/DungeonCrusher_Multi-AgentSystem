@@ -22,6 +22,11 @@ logs/*.log
 data/
 resources/ui_elements_db.json
 
+# Debug output
+debug_*.png
+test_*.png
+test_preprocessed.png
+
 # OS
 .DS_Store
 Thumbs.db

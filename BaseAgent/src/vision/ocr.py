@@ -26,6 +26,46 @@ class OCREngine:
             lang: Tesseract language code (e.g. ``'eng'``, ``'rus'``, ``'eng+rus'``).
         """
         self._lang = lang
+        self._ensure_tesseract()
+
+    @staticmethod
+    def _ensure_tesseract() -> None:
+        """Auto-detect and configure the Tesseract executable path."""
+        import os
+        import sys
+
+        # If already configured, skip.
+        try:
+            import pytesseract
+            if pytesseract.pytesseract.tesseract_cmd and os.path.exists(
+                pytesseract.pytesseract.tesseract_cmd
+            ):
+                return
+        except ImportError:
+            return
+
+        # Search in standard locations (Windows).
+        candidates = []
+        if sys.platform == "win32":
+            candidates = [
+                os.path.join(os.environ.get("ProgramFiles", "C:\\Program Files"),
+                             "Tesseract-OCR", "tesseract.exe"),
+                os.path.join(os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)"),
+                             "Tesseract-OCR", "tesseract.exe"),
+                os.path.join(os.environ.get("LOCALAPPDATA", ""),
+                             "Tesseract-OCR", "tesseract.exe"),
+            ]
+        else:
+            candidates = [
+                "/usr/bin/tesseract",
+                "/usr/local/bin/tesseract",
+            ]
+
+        for path in candidates:
+            if os.path.exists(path):
+                pytesseract.pytesseract.tesseract_cmd = path
+                logger.debug(f"Tesseract auto-detected at: {path}")
+                return
 
     # ------------------------------------------------------------------
     # Public API
@@ -85,7 +125,11 @@ class OCREngine:
 
     @staticmethod
     def _preprocess(image: np.ndarray) -> np.ndarray:
-        """Convert to grayscale, threshold, and denoise for better OCR accuracy."""
+        """Convert to grayscale, apply OTSU threshold, and denoise.
+
+        OTSU binarisation handles both light-on-dark and dark-on-light
+        game text better than adaptive thresholding.
+        """
         try:
             import cv2
         except ImportError as exc:
@@ -99,12 +143,12 @@ class OCREngine:
         else:
             gray = image.copy()
 
-        # Adaptive thresholding works well with game UI text.
-        binary = cv2.adaptiveThreshold(
-            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
+        # OTSU — automatically finds the optimal threshold.
+        _, binary = cv2.threshold(
+            gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
         )
 
-        # Remove small noise.
+        # Light denoise to remove speckle noise.
         denoised = cv2.medianBlur(binary, 3)
 
         return denoised

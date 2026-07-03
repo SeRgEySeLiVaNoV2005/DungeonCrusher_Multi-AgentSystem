@@ -365,12 +365,9 @@ class TooltipReaderAgent(ChildAgent):
         if self._invert:
             gray = cv2.bitwise_not(gray)
 
-        # Step 4: Adaptive threshold.
-        binary = cv2.adaptiveThreshold(
-            gray, 255,
-            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY,
-            11, 2,
+        # Step 4: OTSU threshold (handles varied game text better than adaptive).
+        _, binary = cv2.threshold(
+            gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
         )
 
         # Step 5: Denoise.
