@@ -8,7 +8,7 @@
 
 - **Локально:** `C:\Users\dog24\Desktop\Агенты_для_крушителей_подземелий\`
 - **GitHub:** `git@github.com:SeRgEySeLiVaNoV2005/DungeonCrusher_Multi-AgentSystem.git`
-- **Ветка:** `framework-base` (запушена, 12 коммитов)
+- **Ветка:** `framework-base` (запушена, 13 коммитов)
 
 ## Структура проекта (актуальная)
 
@@ -82,17 +82,17 @@
 ### Этап 5: Оптимизация и отладка (СЕГОДНЯ)
 - **9410954** `perf: memory optimization — gc import, reduced history buffer`
   - Добавлен `import gc`, StateTracker.max_history 300→10
-- **Снижен порог совпадения:** `match_confidence: 0.8→0.6`
-  - Проблема: после перезагрузки ноутбука часть шаблонов давала <0.8
-- **Ускорен CommandOverlay** (незакоммичено):
+- **97607b2** `perf(cmd): reuse tracker frame, 2× downscale, remove bring_to_front`
   - Переиспользование последнего кадра из трекера (вместо свежего MSS)
   - Даунскейл скриншота 2× перед template matching (4× быстрее)
   - Убран лишний bring_to_front после клика
-  - Задержка: 700-1000мс → 150-250мс
+  - `match_confidence: 0.8→0.6` (после перезагрузки ноутбука часть шаблонов давала <0.8)
+  - Задержка CommandOverlay: 700-1000мс → 150-250мс
 
 ## Коммиты (последние)
 
 ```
+97607b2 perf(cmd): reuse tracker frame, 2× downscale, remove bring_to_front
 9410954 perf: memory optimization — gc import, reduced history buffer
 c0105a3 perf(cmd): 4x latency reduction — fresh MSS, skip find_all, no sleep on click
 9977536 fix(cmd): current is a @property, not a method — remove parentheses
