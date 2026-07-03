@@ -274,6 +274,7 @@ class WindowCapturer:
             return False
         try:
             import ctypes
+            from ctypes import wintypes
             user32 = ctypes.windll.user32
 
             HWND_TOPMOST = -1
@@ -292,9 +293,20 @@ class WindowCapturer:
                 region["width"], region["height"],
                 flags,
             )
-            # Let the window paint.
+
+            # Force the window and its children to repaint immediately.
+            RDW_UPDATENOW = 0x0100
+            RDW_ALLCHILDREN = 0x0080
+            RDW_INVALIDATE = 0x0001
+            user32.RedrawWindow(
+                self._window_hwnd,
+                None, None,
+                RDW_UPDATENOW | RDW_ALLCHILDREN | RDW_INVALIDATE,
+            )
+
+            # Let DWM composite the frame.
             import time
-            time.sleep(0.1)
+            time.sleep(0.5)
             logger.debug("Game window set to TOPMOST for capture")
             return True
         except Exception:
