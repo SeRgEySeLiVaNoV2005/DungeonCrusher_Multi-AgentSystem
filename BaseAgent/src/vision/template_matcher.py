@@ -60,6 +60,7 @@ class TemplateMatcher:
         self._templates_dir = Path(templates_dir)
         self._confidence = confidence
         self._templates: dict[str, np.ndarray] = {}  # name → BGR array
+        self._loaded: bool = False
 
     # ------------------------------------------------------------------
     # Public API
@@ -109,8 +110,9 @@ class TemplateMatcher:
                 "Install: pip install opencv-python"
             ) from exc
 
-        if not self._templates:
+        if not self._loaded:
             self.load_templates()
+            self._loaded = True
 
         results: List[MatchResult] = []
 

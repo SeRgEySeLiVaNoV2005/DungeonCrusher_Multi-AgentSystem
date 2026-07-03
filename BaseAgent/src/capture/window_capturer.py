@@ -167,12 +167,20 @@ class WindowCapturer:
             width = rect.right - rect.left
             height = rect.bottom - rect.top
 
-            if width > 0 and height > 0:
-                candidates.append((title, rect.left, rect.top, width, height))
+            # Filter out hidden/ghost windows:
+            #   - Minimum size: at least 200x150 to filter tiny overlays.
+            #   - Ignore windows placed far off-screen (negative coords < -1000).
+            if width >= 200 and height >= 150:
+                if rect.left >= -1000 and rect.top >= -1000:
+                    candidates.append((title, rect.left, rect.top, width, height))
             return True
 
         enum_proc = WNDENUMPROC(_enum_handler)
         user32.EnumWindows(enum_proc, 0)
+
+        # Sort by size (descending) — the largest matching window is most
+        # likely the actual game.
+        candidates.sort(key=lambda c: c[3] * c[4], reverse=True)
 
         # Strategy 1: exact title.
         for title, left, top, width, height in candidates:
@@ -206,8 +214,12 @@ class WindowCapturer:
                     }
                     return self._window_region
 
+        # Debug: list all visible windows to help diagnose.
+        visible = [c[0] for c in candidates[:20]]
+        logger.warning(f"Visible windows (≥200×150): {visible}")
+
         raise CaptureError(
             f"Game window not found. Tried exact title '{self._window_title}' "
             f"and keywords {self._window_keywords}. "
-            f"Visible windows: {[c[0] for c in candidates[:20]]}"
+            f"Visible windows: {visible}"
         )
