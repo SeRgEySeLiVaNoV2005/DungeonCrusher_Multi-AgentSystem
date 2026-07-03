@@ -8,7 +8,7 @@
 
 - **Локально:** `C:\Users\dog24\Desktop\Агенты_для_крушителей_подземелий\`
 - **GitHub:** `git@github.com:SeRgEySeLiVaNoV2005/DungeonCrusher_Multi-AgentSystem.git`
-- **Ветка:** `framework-base` (запушена, 16 коммитов)
+- **Ветка:** `framework-base` (запушена, 18 коммитов)
 
 ## Структура проекта (актуальная)
 
@@ -88,13 +88,18 @@
 - **97607b2** `perf(cmd): reuse tracker frame, 2× downscale, remove bring_to_front`
 - **a092fc1** `fix(cmd): remove 2× downscale that broke template matching`
 
-### Этап 6: AutomaticLevelingHeroesAgent (СЕГОДНЯ — ТЕКУЩИЙ)
-- **ScrollAction** — новый тип действия (скролл колёсиком мыши)
-- **AGENT_STATUS** — новый тип сообщения (busy/idle хартбит)
-- **CombatAgent** теперь публикует AGENT_STATUS на переходах COMBAT↔IDLE
+### Этап 6: AutomaticLevelingHeroesAgent (2026-07-04 — ТЕКУЩИЙ)
+- **ScrollAction** — скролл колёсиком мыши (pynput)
+- **AGENT_STATUS** / **SYSTEM_TRIGGER_LEVELING** — новые типы сообщений
+- **Multi-scale template matching** — 3 шкалы (1.0, 0.94, 1.06) + early exit на 1.0×
+- **ParentAgent координаты** — конвертация window-relative → абсолютные экранные
+- **CombatAgent** публикует AGENT_STATUS
 - **AutomaticLevelingHeroesAgent** — второй автономный агент
   - 5 состояний: IDLE → NAVIGATING → SCANNING → LEVELING → DONE
-  - Win32 GetLastInputInfo для определения бездействия юзера
+  - Win32 GetLastInputInfo для idle detection
+  - Двухпроходная стратегия: pass 1 (наём `nanyat`) → pass 2 (прокачка `prokachka`)
+  - Команда `levelup` в оверлее и консоли
+  - 17 шаблонов загружено, 105 тестов
   - Подписка на AGENT_STATUS для отслеживания занятости других агентов
   - Скролл списка героев + поиск трёх типов кнопок:
     - 🔴 `prokachka.png` — красная (прокачка доступна)
@@ -107,6 +112,7 @@
 ## Коммиты (последние)
 
 ```
+faa3cc4 perf(agents): optimize LevelingAgent — multi-scale early-exit, two-pass strategy
 aa41c59 feat(agents): add hire button support to LevelingAgent
 <see git log> feat(agents): add AutomaticLevelingHeroesAgent — autonomous hero leveling
 ec04d5c docs: add session resume point to SESSION_STATE

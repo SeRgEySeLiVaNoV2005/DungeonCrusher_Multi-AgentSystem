@@ -164,6 +164,7 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         self._busy_agents: Set[str] = set()
         self._current_level_button: Optional[MatchResult] = None
         self._pass: int = 1  # 1 = hire pass, 2 = level pass
+        self._scrolled_to_top: bool = False  # Initial scroll-up flag.
 
         # Stats.
         self._total_hires: int = 0
@@ -446,6 +447,7 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         self._navigate_countdown = self._cfg.navigate_check_frames
         self._scroll_count = 0
         self._pass = 1  # Start with hire pass.
+        self._scrolled_to_top = False
 
         if self._current_screenshot is not None:
             match = self._matcher.find_one(self._current_screenshot, "geroi")
@@ -473,6 +475,14 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
 
     def _on_scanning_enter(self) -> None:
         self._scan_countdown = self._cfg.scan_interval_frames
+        # On first entry, scroll to the very top of the hero list.
+        if not self._scrolled_to_top:
+            self._scrolled_to_top = True
+            logger.info("[Leveling] Scrolling to top of hero list")
+            self.request_action(
+                ScrollAction(dy=1, amount=self._cfg.scroll_up_after_click),
+                WaitAction(self._cfg.scroll_delay),
+            )
         logger.debug("[Leveling] Entering SCANNING")
 
     def _on_scanning_update(self) -> None:
@@ -491,30 +501,41 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
     # ------------------------------------------------------------------
 
     def _on_leveling_enter(self) -> None:
-        """Click the button that was found (hire or level-up)."""
+        """Click the button that was found (hire or level-up).
+
+        On the hire pass, clicks **twice**: the first click hires the
+        hero and turns the button red, the second click levels them up
+        immediately.  No scroll-back — just continue scanning down.
+        """
         button = getattr(self, "_current_level_button", None)
         if button is not None:
+            cx, cy = button.center[0], button.center[1]
             if self._pass == 1:
                 self._total_hires += 1
                 logger.info(
                     f"[Leveling] Hire #{self._total_hires} "
-                    f"at ({button.center[0]}, {button.center[1]})"
+                    f"at ({cx}, {cy}) — double-click to level"
+                )
+                # Hire click → wait → level-up click (button turns red).
+                self.request_action(
+                    ClickAction(cx, cy),
+                    WaitAction(self._cfg.level_up_wait),
+                    ClickAction(cx, cy),
+                    WaitAction(self._cfg.level_up_wait),
                 )
             else:
                 self._total_levels += 1
                 logger.info(
                     f"[Leveling] Level-up #{self._total_levels} "
-                    f"at ({button.center[0]}, {button.center[1]})"
+                    f"at ({cx}, {cy})"
                 )
-            self.request_action(
-                ClickAction(button.center[0], button.center[1]),
-                WaitAction(self._cfg.level_up_wait),
-            )
+                self.request_action(
+                    ClickAction(cx, cy),
+                    WaitAction(self._cfg.level_up_wait),
+                )
             self._current_level_button = None
 
-        # Heroes that reach max level move to the top of the list.
-        # Reset scroll position.
-        self._scroll_count = 0
+        # Continue scanning down from current position — no scroll-up.
         self._scan_countdown = self._cfg.scan_interval_frames
 
     def _on_leveling_update(self) -> None:

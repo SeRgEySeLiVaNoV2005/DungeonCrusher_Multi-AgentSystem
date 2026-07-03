@@ -103,6 +103,9 @@ class AutomaticLevelingConfig:
     level_up_wait: float = 0.5
     """Wait (seconds) after clicking level-up for the animation."""
 
+    scroll_up_after_click: int = 12
+    """Wheel clicks to scroll back up after clicking a button."""
+
     navigate_check_frames: int = 15
     """Frames to wait for the Heroes tab to appear before giving up."""
 
@@ -252,6 +255,7 @@ def load_config(path: Optional[str] = None) -> Settings:
             scroll_delay=leveling_raw.get("scroll_delay", 0.3),
             scan_interval_frames=leveling_raw.get("scan_interval_frames", 3),
             level_up_wait=leveling_raw.get("level_up_wait", 0.5),
+            scroll_up_after_click=leveling_raw.get("scroll_up_after_click", 12),
             navigate_check_frames=leveling_raw.get("navigate_check_frames", 15),
             max_scrolls=leveling_raw.get("max_scrolls", 30),
             red_template=leveling_raw.get("red_template", "prokachka"),
