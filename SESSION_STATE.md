@@ -129,6 +129,36 @@ a73c76a feat(ui): add command overlay — floating input window for button click
 5. **ResourceAgent** — сбор золота/душ
 6. **Тесты для инфраструктурных модулей** — хотя бы с моками
 
+## Точка восстановления — конец сеанса 2026-07-03
+
+**Лаунчер запущен в фоне** (PID `bo37mbdvx`), оверлей висит поверх игры.  
+SystemLauncher, ParentAgent, TooltipReaderAgent работают.
+
+**Последний коммит:** `d1c75ed` — docs: update SESSION_STATE — 14 commits, downscale bug documented
+
+**Что работает прямо сейчас:**
+- ✅ CommandOverlay — строка ввода поверх игры, Enter → клик по шаблону
+- ✅ Шаблоны матчатся (14 шт.) — `match_confidence: 0.6`
+- ✅ Web-сервер http://127.0.0.1:8765
+- ✅ TooltipReaderAgent (CTRL+H)
+- ⚠️ Ctrl+Shift+J — занят, фокус на оверлей только мышкой
+- ❌ CombatAgent отключен (нет боевых шаблонов)
+- ❌ Tesseract OCR не установлен
+
+**Что дальше (приоритет):**
+1. Создать боевые шаблоны → включить CombatAgent
+2. Установить Tesseract OCR
+3. NavigationAgent / ResourceAgent
+4. Тесты для инфраструктурных модулей
+
+**Инструкция для следующего сеанса:**
+1. Прочитай этот файл (`SESSION_STATE.md`)
+2. Проверь `git status` и `git log --oneline -5`
+3. Лаунчер, возможно, ещё жив — проверь `Get-Process python`
+4. Продолжай с того места, где остановились
+
+---
+
 ## Правила работы
 
 1. Спрашивать разрешение перед установкой ЛЮБОЙ библиотеки
