@@ -247,9 +247,13 @@ class ParentAgent(BaseAgent):
                 f"[Cmd] Template '{record.id}' not found on screen. "
                 f"Confidence threshold: {self._matcher._confidence}"
             )
+            # Save a debug image anyway so the user can see what's on screen.
+            self._save_debug_image(screenshot, None, record.name, record.id)
             return
 
-        # 4. Convert match coords to screen coords and click.
+        # 4. Draw a red highlight around the match and save as debug image.
+        self._save_debug_image(screenshot, match, record.name, record.id)
+
         region = self._capturer.window_region
         if region:
             screen_x = region["left"] + match.center[0]
@@ -258,14 +262,58 @@ class ParentAgent(BaseAgent):
             screen_x, screen_y = match.center
 
         logger.info(
-            f"[Cmd] Clicking '{record.name}' at screen ({screen_x}, {screen_y}) "
-            f"(confidence: {match.confidence:.2f})"
+            f"[Cmd] Found '{record.name}' at window ({match.center[0]}, {match.center[1]}), "
+            f"screen ({screen_x}, {screen_y}), "
+            f"confidence={match.confidence:.2f}. "
+            f"Debug image saved — check http://localhost:8765"
         )
 
-        try:
-            self._emulator.click(screen_x, screen_y)
-        except Exception:
-            logger.exception("[Cmd] Click failed")
+    def _save_debug_image(
+        self,
+        screenshot: "np.ndarray",
+        match,
+        name: str,
+        element_id: str,
+    ) -> None:
+        """Save a copy of the screenshot with an optional red highlight rect.
+
+        Args:
+            screenshot: BGR screenshot.
+            match: :class:`MatchResult` or ``None``.
+            name: Human-readable element name (for the label).
+            element_id: Element id (for the filename).
+        """
+        import cv2
+        from pathlib import Path
+
+        image = screenshot.copy()
+
+        if match is not None:
+            left, top, w, h = match.bounds
+            # Red rectangle — 3 px thick.
+            cv2.rectangle(image, (left, top), (left + w, top + h), (0, 0, 255), 3)
+            # Label above the rectangle.
+            label = f"{name} ({match.confidence:.2f})"
+            (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+            label_y = top - 8 if top > th + 8 else top + h + th + 8
+            cv2.rectangle(
+                image,
+                (left, label_y - th - 4),
+                (left + tw + 4, label_y + 2),
+                (0, 0, 255),
+                -1,
+            )
+            cv2.putText(
+                image, label, (left + 2, label_y),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2,
+            )
+
+        # Save to a fixed path so the web server can serve it.
+        debug_dir = Path("resources")
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        debug_path = debug_dir / "debug_preview.png"
+        cv2.imwrite(str(debug_path), image)
+        logger.debug(f"[Cmd] Debug image saved to {debug_path}")
 
     def _db_names(self) -> str:
         """Return a comma-separated list of DB element names for hints."""

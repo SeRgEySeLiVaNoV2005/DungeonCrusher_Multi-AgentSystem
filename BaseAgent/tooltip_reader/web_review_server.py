@@ -116,6 +116,8 @@ _REVIEW_PAGE = r"""<!DOCTYPE html>
   #cmdStatus { font-size: 0.8rem; color: var(--text-dim); }
   #cmdStatus.ok { color: var(--btn-save); }
   #cmdStatus.err { color: #ff6b6b; }
+  .debug-preview { max-width: 760px; margin: 0 auto 16px auto; }
+  .debug-label { font-size: 0.75rem; color: var(--text-dim); margin-bottom: 6px; }
 </style>
 </head>
 <body>
@@ -129,8 +131,13 @@ _REVIEW_PAGE = r"""<!DOCTYPE html>
 <div class="command-bar">
   <input type="text" id="cmdInput" placeholder="Button name (e.g. Герои, Магазин)..."
          onkeydown="if(event.key==='Enter')sendCommand()">
-  <button class="btn btn-save" onclick="sendCommand()">&#128269; Find &amp; Click</button>
+  <button class="btn btn-save" onclick="sendCommand()">&#128269; Find &amp; Highlight</button>
   <span id="cmdStatus"></span>
+</div>
+
+<div class="debug-preview" id="debugPreviewWrap" style="display:none;">
+  <div class="debug-label">&#128207; Debug preview — red rectangle shows where the template was found</div>
+  <img id="debugPreview" src="" alt="Debug preview" style="max-width:100%; border-radius:4px; border:1px solid rgba(255,255,255,0.1);">
 </div>
 
 <div class="container" id="app">
@@ -305,11 +312,13 @@ document.addEventListener('input', function(e) {
 async function sendCommand() {
   const input = document.getElementById('cmdInput');
   const status = document.getElementById('cmdStatus');
+  const preview = document.getElementById('debugPreview');
   const name = input.value.trim();
   if (!name) return;
 
   status.textContent = 'Searching...';
   status.className = '';
+  preview.parentNode.style.display = 'none';
   try {
     const resp = await fetch('/api/command', {
       method: 'POST',
@@ -318,18 +327,19 @@ async function sendCommand() {
     });
     const data = await resp.json();
     if (data.ok) {
-      status.textContent = data.message || 'Clicked!';
+      status.textContent = data.message || 'Found!';
       status.className = 'ok';
-      input.value = '';
     } else {
       status.textContent = data.error || 'Not found';
       status.className = 'err';
     }
+    // Always show debug image — it helps diagnose.
+    preview.src = '/api/debug-image?t=' + Date.now();
+    preview.parentNode.style.display = 'block';
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     status.className = 'err';
   }
-  setTimeout(function() { status.textContent = ''; status.className = ''; }, 4000);
 }
 
 // ---- Init ----
@@ -381,6 +391,8 @@ class _ReviewHandler(BaseHTTPRequestHandler):
 
         if path == "" or path == "/":
             self._serve_html()
+        elif path == "/api/debug-image":
+            self._serve_debug_image()
         elif path == "/api/pending":
             self._handle_list_pending(parsed.query)
         elif path.startswith("/api/pending/"):
@@ -416,6 +428,25 @@ class _ReviewHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
     # Handlers
     # ------------------------------------------------------------------
+
+    def _serve_debug_image(self) -> None:
+        """Serve the last debug preview image (with red highlight)."""
+        from pathlib import Path
+        debug_path = Path("resources") / "debug_preview.png"
+        if not debug_path.exists():
+            self._send_json({"error": "No debug image yet"}, 404)
+            return
+        try:
+            with open(debug_path, "rb") as f:
+                data = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.end_headers()
+            self.wfile.write(data)
+        except OSError:
+            self._send_json({"error": "Failed to read debug image"}, 500)
 
     def _serve_html(self) -> None:
         self.send_response(200)
