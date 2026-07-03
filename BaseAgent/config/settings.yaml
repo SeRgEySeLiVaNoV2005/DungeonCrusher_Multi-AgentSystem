@@ -3,11 +3,14 @@
 # Game window settings
 game:
   window_title: "VK Play"
-  # Fallback window search keywords
+  # Fallback window search keywords (English + Russian)
   window_keywords:
     - "Dungeon"
     - "Crusher"
     - "Soul Hunters"
+    - "Крушители"
+    - "Подземелий"
+    - "VK Play"
 
 # Screen capture settings
 capture:

@@ -19,7 +19,10 @@ class GameConfig:
 
     window_title: str = "VK Play"
     window_keywords: List[str] = field(
-        default_factory=lambda: ["Dungeon", "Crusher", "Soul Hunters"]
+        default_factory=lambda: [
+            "Dungeon", "Crusher", "Soul Hunters",
+            "Крушители", "Подземелий", "VK Play",
+        ]
     )
 
 

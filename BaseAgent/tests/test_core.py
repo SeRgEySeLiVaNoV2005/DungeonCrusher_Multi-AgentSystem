@@ -77,6 +77,9 @@ class TestConfigDefaults:
         assert "Dungeon" in cfg.window_keywords
         assert "Crusher" in cfg.window_keywords
         assert "Soul Hunters" in cfg.window_keywords
+        # Russian keywords for VK Play.
+        assert "Крушители" in cfg.window_keywords
+        assert "Подземелий" in cfg.window_keywords
 
 
 # ---------------------------------------------------------------------------
