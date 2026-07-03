@@ -261,6 +261,66 @@ class WindowCapturer:
             logger.debug("Failed to bring game window to front", exc_info=True)
             return False
 
+    def hide_other_windows(self) -> list:
+        """Hide all visible windows EXCEPT the game window.
+
+        Returns a list of HWNDs that were hidden — pass to
+        :meth:`show_windows` to restore them.
+
+        Use this as a last resort when PrintWindow fails and the game
+        must be captured via MSS while other windows (browser) are in front.
+        """
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        hidden = []
+
+        def _enum_handler(hwnd: int, _lparam: int) -> bool:
+            if hwnd == self._window_hwnd:
+                return True  # Skip the game window.
+            if not user32.IsWindowVisible(hwnd):
+                return True
+
+            # Skip taskbar, desktop, etc.
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length == 0:
+                return True
+
+            # Skip tiny overlay windows.
+            rect = wintypes.RECT()
+            user32.GetWindowRect(hwnd, ctypes.byref(rect))
+            w = rect.right - rect.left
+            h = rect.bottom - rect.top
+            if w < 200 or h < 150:
+                return True
+
+            # Hide it.
+            user32.ShowWindow(hwnd, 0)  # SW_HIDE
+            hidden.append(hwnd)
+            return True
+
+        WNDENUMPROC = ctypes.WINFUNCTYPE(
+            wintypes.BOOL, wintypes.HWND, wintypes.LPARAM
+        )
+        enum_proc = WNDENUMPROC(_enum_handler)
+        user32.EnumWindows(enum_proc, 0)
+
+        logger.debug(f"Hid {len(hidden)} windows for capture")
+        return hidden
+
+    def show_windows(self, hwnds: list) -> None:
+        """Restore windows hidden by :meth:`hide_other_windows`."""
+        import ctypes
+        user32 = ctypes.windll.user32
+        for hwnd in hwnds:
+            try:
+                user32.ShowWindow(hwnd, 5)  # SW_SHOW
+            except Exception:
+                pass
+        if hwnds:
+            logger.debug(f"Restored {len(hwnds)} windows")
+
     def force_on_top(self) -> bool:
         """Temporarily make the game window topmost so it renders above
         all other windows — even when the browser has focus.

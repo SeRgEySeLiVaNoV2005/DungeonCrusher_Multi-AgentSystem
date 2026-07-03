@@ -233,14 +233,17 @@ class ParentAgent(BaseAgent):
             f"[Cmd] Found '{record.name}' (id={record.id}) — searching on screen..."
         )
 
-        # 2. Capture via the standard pipeline (tries PrintWindow first,
-        #    falls back to MSS — which needs the window on top).
-        self._capturer.force_on_top()
+        # 2. Hide all windows except the game, capture, then restore.
+        #    PrintWindow doesn't work with DirectX, and MSS captures
+        #    whatever is on top — so we temporarily clear the screen.
+        hidden = self._capturer.hide_other_windows()
+        import time
+        time.sleep(0.3)  # Let the desktop settle.
         try:
-            screenshot = self._capturer.capture()
+            screenshot = self._capturer._capture_via_mss()
         except Exception:
             screenshot = None
-        self._capturer.restore_z_order()
+        self._capturer.show_windows(hidden)
 
         if screenshot is None:
             logger.warning("[Cmd] Failed to capture screenshot")
