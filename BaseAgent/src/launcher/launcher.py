@@ -215,7 +215,8 @@ class SystemLauncher:
     def _create_default_children(self) -> None:
         """Create default child agents on bootstrap."""
         self._create_tooltip_reader()
-        self._create_combat_agent()
+        # CombatAgent disabled for now — enable when templates are ready.
+        # self._create_combat_agent()
 
     def _create_tooltip_reader(self) -> None:
         """Create the TooltipReaderAgent with config from settings."""

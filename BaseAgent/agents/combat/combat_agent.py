@@ -421,6 +421,15 @@ class CombatAgent(ChildAgent):
         if self._current_screenshot is None:
             return False
 
+        # Safety: don't engage unless we have at least one combat template.
+        # The colour scanner alone can produce false positives.
+        has_combat_templates = any(
+            name in self._combat_templates
+            for name in self._matcher.template_names
+        )
+        if not has_combat_templates:
+            return False
+
         for scanner in self._scanners:
             try:
                 result = scanner(self._current_screenshot)
