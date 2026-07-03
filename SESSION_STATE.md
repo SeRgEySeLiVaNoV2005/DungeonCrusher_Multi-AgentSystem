@@ -8,7 +8,7 @@
 
 - **Локально:** `C:\Users\dog24\Desktop\Агенты_для_крушителей_подземелий\`
 - **GitHub:** `git@github.com:SeRgEySeLiVaNoV2005/DungeonCrusher_Multi-AgentSystem.git`
-- **Ветка:** `framework-base` (запушена, 15 коммитов)
+- **Ветка:** `framework-base` (запушена, 16 коммитов)
 
 ## Структура проекта (актуальная)
 
@@ -96,14 +96,18 @@
   - 5 состояний: IDLE → NAVIGATING → SCANNING → LEVELING → DONE
   - Win32 GetLastInputInfo для определения бездействия юзера
   - Подписка на AGENT_STATUS для отслеживания занятости других агентов
-  - Скролл списка героев + поиск красной кнопки (шаблон prokachka.png)
+  - Скролл списка героев + поиск трёх типов кнопок:
+    - 🔴 `prokachka.png` — красная (прокачка доступна)
+    - 🟣 `HiringHero.png` — фиолетовая (наём героя)
+    - ⚫ `prokachka_gray.png` — серая (недоступна)
   - Сброс позиции скролла после прокачки (герой улетает наверх)
   - Включен в лаунчере по умолчанию
-  - 25 тестов
+  - 26 тестов
 
 ## Коммиты (последние)
 
 ```
+aa41c59 feat(agents): add hire button support to LevelingAgent
 <see git log> feat(agents): add AutomaticLevelingHeroesAgent — autonomous hero leveling
 ec04d5c docs: add session resume point to SESSION_STATE
 d1c75ed docs: update SESSION_STATE — 14 commits, downscale bug documented
@@ -114,8 +118,8 @@ a092fc1 fix(cmd): remove 2× downscale that broke template matching
 
 ## Статистика тестов
 
-- **104 теста**, все проходят
-- 16 test_core, 19 test_state_machine, 22 test_combat_agent, 22 test_tooltip_reader, **25 test_automatic_leveling_heroes**
+- **105 тестов**, все проходят
+- 16 test_core, 19 test_state_machine, 22 test_combat_agent, 22 test_tooltip_reader, **26 test_automatic_leveling_heroes**
 - Пробелы: WindowCapturer (0), InputEmulator (0), TemplateMatcher (0), MessageBus (0), ParentAgent (0)
 
 ## Известные проблемы
@@ -125,7 +129,6 @@ a092fc1 fix(cmd): remove 2× downscale that broke template matching
 3. **Ctrl+Shift+J занят** — хоткей оверлея не регистрируется, нужно кликать мышкой
 4. **ParentAgent._on_user_command** вызывает приватный метод `_capture_via_mss()` — только как fallback, когда трекер пуст
 5. **Нет лимита на `_pending_actions`** — может расти бесконечно при спаме
-6. **Нет шаблонов prokachka.png / prokachka_gray.png** — агент прокачки создан, но не может работать без шаблонов красной/серой кнопок
 
 ## Что дальше
 
@@ -139,7 +142,7 @@ a092fc1 fix(cmd): remove 2× downscale that broke template matching
 
 ## Точка восстановления — конец сеанса 2026-07-03
 
-**Последний коммит:** `feat(agents): add AutomaticLevelingHeroesAgent` — 15 коммитов total
+**Последний коммит:** `aa41c59` feat(agents): add hire button support to LevelingAgent — **16 коммитов total**
 
 **Добавлено в этом сеансе:**
 - ✅ AutomaticLevelingHeroesAgent (5-state FSM, Win32 idle detection)
@@ -147,15 +150,16 @@ a092fc1 fix(cmd): remove 2× downscale that broke template matching
 - ✅ AGENT_STATUS в MessageBus (busy/idle трекинг)
 - ✅ CombatAgent публикует AGENT_STATUS
 - ✅ AutomaticLevelingConfig в config.py + settings.yaml
-- ✅ 25 новых тестов, 104 total
-- ⚠️ Ждём шаблоны prokachka.png / prokachka_gray.png от пользователя
+- ✅ 3 шаблона: prokachka.png, prokachka_gray.png, HiringHero.png
+- ✅ Поддержка фиолетовой кнопки найма (HiringHero)
+- ✅ 26 новых тестов, 105 total
 
 **Что работает:**
 - ✅ CommandOverlay — строка ввода поверх игры
-- ✅ Шаблоны матчатся (14 шт.) — `match_confidence: 0.6`
+- ✅ Шаблоны матчатся (17 шт.) — `match_confidence: 0.6`
 - ✅ Web-сервер http://127.0.0.1:8765
 - ✅ TooltipReaderAgent (CTRL+H)
-- ✅ AutomaticLevelingHeroesAgent (FSM + idle detection — ждёт шаблоны кнопок)
+- ✅ AutomaticLevelingHeroesAgent — полностью готов к работе
 - ⚠️ Ctrl+Shift+J — занят, фокус на оверлей только мышкой
 - ❌ CombatAgent отключен (нет боевых шаблонов)
 - ❌ Tesseract OCR не установлен
@@ -163,7 +167,7 @@ a092fc1 fix(cmd): remove 2× downscale that broke template matching
 **Инструкция для следующего сеанса:**
 1. Прочитай этот файл (`SESSION_STATE.md`)
 2. Проверь `git status` и `git log --oneline -5`
-3. Проверь, есть ли шаблоны `prokachka.png` и `prokachka_gray.png`
+3. Лаунчер: `cd BaseAgent && python -m src.launcher`
 4. Продолжай с того места, где остановились
 
 ---
