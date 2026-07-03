@@ -233,11 +233,16 @@ class ParentAgent(BaseAgent):
             f"[Cmd] Found '{record.name}' (id={record.id}) — searching on screen..."
         )
 
-        # 2. Capture the game window (PrintWindow works even behind browser).
+        # 2. Force game window on top for a split-second, capture, then restore.
+        self._capturer.force_on_top()
         try:
-            screenshot = self._capturer.capture()
+            screenshot = self._capturer._capture_via_mss()
         except Exception:
-            logger.exception("[Cmd] Failed to capture screenshot")
+            screenshot = None
+        self._capturer.restore_z_order()
+
+        if screenshot is None:
+            logger.warning("[Cmd] Failed to capture screenshot")
             return
 
         # 3. Match the template.

@@ -261,6 +261,71 @@ class WindowCapturer:
             logger.debug("Failed to bring game window to front", exc_info=True)
             return False
 
+    def force_on_top(self) -> bool:
+        """Temporarily make the game window topmost so it renders above
+        all other windows — even when the browser has focus.
+
+        Call :meth:`restore_z_order` after capturing.
+
+        Returns:
+            ``True`` on success.
+        """
+        if self._window_hwnd is None:
+            return False
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+
+            HWND_TOPMOST = -1
+            SWP_NOMOVE = 0x0002
+            SWP_NOSIZE = 0x0001
+            SWP_NOACTIVATE = 0x0010
+            SWP_SHOWWINDOW = 0x0040
+
+            region = self._window_region
+            flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
+
+            user32.SetWindowPos(
+                self._window_hwnd,
+                HWND_TOPMOST,
+                region["left"], region["top"],
+                region["width"], region["height"],
+                flags,
+            )
+            # Let the window paint.
+            import time
+            time.sleep(0.1)
+            logger.debug("Game window set to TOPMOST for capture")
+            return True
+        except Exception:
+            logger.debug("force_on_top failed", exc_info=True)
+            return False
+
+    def restore_z_order(self) -> bool:
+        """Remove TOPMOST flag — window returns to normal Z-order."""
+        if self._window_hwnd is None:
+            return False
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+
+            HWND_NOTOPMOST = -2
+            SWP_NOMOVE = 0x0002
+            SWP_NOSIZE = 0x0001
+            SWP_NOACTIVATE = 0x0010
+
+            user32.SetWindowPos(
+                self._window_hwnd,
+                HWND_NOTOPMOST,
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            )
+            logger.debug("Game window restored to normal Z-order")
+            return True
+        except Exception:
+            logger.debug("restore_z_order failed", exc_info=True)
+            return False
+
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
