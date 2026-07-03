@@ -9,6 +9,7 @@ The parent agent owns the main loop:
 
 from __future__ import annotations
 
+import gc
 import time
 from typing import Dict, List, Optional, Tuple
 

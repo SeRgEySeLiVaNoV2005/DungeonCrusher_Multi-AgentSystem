@@ -77,7 +77,7 @@ class StateTracker:
     Provides helpers for diffing consecutive states and querying history.
     """
 
-    def __init__(self, max_history: int = 300):
+    def __init__(self, max_history: int = 10):
         """
         Args:
             max_history: Maximum number of states to retain.
