@@ -13,6 +13,25 @@ from ..core.logger import get_logger
 logger = get_logger(__name__)
 
 
+def get_cursor_position() -> Tuple[int, int]:
+    """Return the current mouse cursor position in screen coordinates.
+
+    Returns:
+        (x, y) tuple of absolute screen coordinates.
+
+    Raises:
+        InputError: If pynput is unavailable.
+    """
+    try:
+        from pynput.mouse import Controller as MouseController
+    except ImportError as exc:
+        raise InputError(
+            "pynput is required for cursor position. Install: pip install pynput"
+        ) from exc
+    mc = MouseController()
+    return (int(mc.position[0]), int(mc.position[1]))
+
+
 # ---------------------------------------------------------------------------
 # Types
 # ---------------------------------------------------------------------------

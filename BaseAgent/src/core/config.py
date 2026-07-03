@@ -56,6 +56,32 @@ class AgentConfig:
 
 
 @dataclass
+class TooltipReaderConfig:
+    """Settings for the TooltipReaderAgent (CTRL+H OCR tool)."""
+
+    region_width: int = 320
+    """Width of the capture region around the cursor."""
+
+    region_height: int = 90
+    """Height of the capture region around the cursor."""
+
+    hover_delay: float = 0.0
+    """Not used in manual mode; reserved for future auto-hover."""
+
+    ocr_lang: str = "eng"
+    """Tesseract language code."""
+
+    scale: float = 2.0
+    """Upscale factor for OCR (1.0 = no scaling)."""
+
+    invert: bool = True
+    """Invert colors for light-on-dark game tooltips."""
+
+    db_path: str = "resources/ui_elements_db.json"
+    """Path to the UI element database JSON file."""
+
+
+@dataclass
 class LoggingConfig:
     """Settings for logging."""
 
@@ -73,6 +99,7 @@ class Settings:
     input: InputConfig = field(default_factory=InputConfig)
     vision: VisionConfig = field(default_factory=VisionConfig)
     agents: AgentConfig = field(default_factory=AgentConfig)
+    tooltip_reader: TooltipReaderConfig = field(default_factory=TooltipReaderConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
 
 
@@ -136,6 +163,7 @@ def load_config(path: Optional[str] = None) -> Settings:
     input_raw = raw.get("input", {})
     vision_raw = raw.get("vision", {})
     agents_raw = raw.get("agents", {})
+    tooltip_raw = raw.get("tooltip_reader", {})
     logging_raw = raw.get("logging", {})
 
     return Settings(
@@ -168,5 +196,14 @@ def load_config(path: Optional[str] = None) -> Settings:
                 "%(asctime)s [%(levelname)-8s] %(name)s: %(message)s",
             ),
             file=logging_raw.get("file", "logs/system.log"),
+        ),
+        tooltip_reader=TooltipReaderConfig(
+            region_width=tooltip_raw.get("region_width", 320),
+            region_height=tooltip_raw.get("region_height", 90),
+            hover_delay=tooltip_raw.get("hover_delay", 0.0),
+            ocr_lang=tooltip_raw.get("ocr_lang", "eng"),
+            scale=tooltip_raw.get("scale", 2.0),
+            invert=tooltip_raw.get("invert", True),
+            db_path=tooltip_raw.get("db_path", "resources/ui_elements_db.json"),
         ),
     )

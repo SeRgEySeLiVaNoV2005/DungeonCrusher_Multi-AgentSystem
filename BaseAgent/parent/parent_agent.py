@@ -150,10 +150,13 @@ class ParentAgent(BaseAgent):
                 ui_map.setdefault(m.name, []).append(m)
 
             state = GameState(
-                screenshot=None,  # Don't store raw pixels in state by default.
+                screenshot=screenshot,
                 ui_elements=ui_map,
                 ocr_texts=ocr_texts,
-                metadata={"frame_ms": time.perf_counter() - frame_start},
+                metadata={
+                    "frame_ms": time.perf_counter() - frame_start,
+                    "window_region": self._capturer.window_region,
+                },
             )
             self._tracker.push(state)
 

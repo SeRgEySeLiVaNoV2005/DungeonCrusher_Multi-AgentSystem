@@ -44,8 +44,8 @@ class GameState:
 
     timestamp: datetime = field(default_factory=datetime.now)
 
-    # Current screenshot (BGR numpy array, stored as bytes for immutability).
-    screenshot: Optional[bytes] = None
+    # Current screenshot (BGR numpy array).
+    screenshot: Optional[Any] = None
 
     # High-level game data populated by vision pipeline.
     gold: Optional[int] = None

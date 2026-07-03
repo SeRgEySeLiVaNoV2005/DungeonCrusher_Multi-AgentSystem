@@ -68,9 +68,9 @@ class SystemLauncher:
         Args:
             dry_run: If True, skip game window connection (testing mode).
         """
-        logger.info("══════════════════════════════════════")
+        logger.info("=" * 40)
         logger.info("DungeonCrusher Multi-Agent System v0.1.0")
-        logger.info("══════════════════════════════════════")
+        logger.info("=" * 40)
 
         if dry_run:
             logger.info("DRY-RUN mode — no game connection")
@@ -127,15 +127,30 @@ class SystemLauncher:
         logger.info("All agents stopped. Goodbye!")
 
     def _create_default_children(self) -> None:
-        """Hook to create stub child agents.
+        """Create default child agents on bootstrap."""
+        # TooltipReaderAgent — CTRL+H to read text under cursor.
+        self._create_tooltip_reader()
 
-        Override or extend in the future to add domain-specific agents.
-        """
-        # Stub: a watcher agent that just logs frames.
-        # Uncomment when you're ready to add real agents:
-        # from watcher.watcher_agent import WatcherAgent
-        # self._children.append(WatcherAgent("watcher", self._bus))
-        pass
+    def _create_tooltip_reader(self) -> None:
+        """Create the TooltipReaderAgent with config from settings."""
+        cfg = self._settings.tooltip_reader
+        try:
+            from tooltip_reader.tooltip_reader_agent import TooltipReaderAgent
+
+            agent = TooltipReaderAgent(
+                name="tooltip_reader",
+                bus=self._bus,
+                domain="debug",
+                region_width=cfg.region_width,
+                region_height=cfg.region_height,
+                ocr_lang=cfg.ocr_lang,
+                scale=cfg.scale,
+                invert=cfg.invert,
+                db_path=cfg.db_path,
+            )
+            self._children.append(agent)
+        except Exception:
+            logger.exception("Failed to create TooltipReaderAgent")
 
 
 # ---------------------------------------------------------------------------

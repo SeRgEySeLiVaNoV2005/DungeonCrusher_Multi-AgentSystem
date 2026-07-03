@@ -37,6 +37,22 @@ agents:
   # Child agent decision timeout in seconds
   decision_timeout: 1.0
 
+# Tooltip Reader Agent (CTRL+H OCR tool)
+tooltip_reader:
+  # Size of the capture region around the cursor (pixels)
+  region_width: 320
+  region_height: 90
+  # Reserved for future auto-hover mode
+  hover_delay: 0.0
+  # Tesseract language code (eng, rus, eng+rus)
+  ocr_lang: "eng"
+  # Upscale factor for OCR (1.0 = no scaling, 2.0 = double size)
+  scale: 2.0
+  # Invert colors for light-on-dark tooltips
+  invert: true
+  # Path to the UI element database JSON file
+  db_path: "resources/ui_elements_db.json"
+
 # Logging
 logging:
   level: "INFO"
