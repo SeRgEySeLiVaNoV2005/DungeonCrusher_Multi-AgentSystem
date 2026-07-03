@@ -233,7 +233,8 @@ class ParentAgent(BaseAgent):
             f"[Cmd] Found '{record.name}' (id={record.id}) — searching on screen..."
         )
 
-        # 2. Capture a fresh screenshot.
+        # 2. Bring the game window to front, then capture.
+        self._capturer.bring_to_front()
         try:
             screenshot = self._capturer.capture()
         except Exception:

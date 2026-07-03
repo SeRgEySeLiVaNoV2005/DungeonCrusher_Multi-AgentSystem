@@ -42,6 +42,7 @@ class WindowCapturer:
 
         # Populated after first successful capture.
         self._window_region: Optional[Dict[str, int]] = None
+        self._window_hwnd: Optional[int] = None
         self._last_capture_time: float = 0.0
 
         # Lazy-imported mss instance.
@@ -116,6 +117,38 @@ class WindowCapturer:
         """The current window bounding box, or ``None`` if not yet located."""
         return self._window_region
 
+    def bring_to_front(self) -> bool:
+        """Bring the game window to the foreground (top of Z-order).
+
+        Call this before capturing if the game might be behind other windows.
+
+        Returns:
+            ``True`` if the window was successfully brought to front.
+        """
+        if self._window_hwnd is None:
+            logger.warning("No game window HWND — cannot bring to front")
+            return False
+
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+
+            # If the window is minimised, restore it first.
+            SW_RESTORE = 9
+            if user32.IsIconic(self._window_hwnd):
+                user32.ShowWindow(self._window_hwnd, SW_RESTORE)
+
+            # Bring to front.
+            user32.SetForegroundWindow(self._window_hwnd)
+            # Allow the window to render after coming to front.
+            import time
+            time.sleep(0.15)
+            logger.debug("Game window brought to front")
+            return True
+        except Exception:
+            logger.debug("Failed to bring game window to front", exc_info=True)
+            return False
+
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
@@ -144,7 +177,7 @@ class WindowCapturer:
         kernel32 = ctypes.windll.kernel32
 
         # Candidate storage.
-        candidates: List[Tuple[str, int, int, int, int]] = []
+        candidates: List[Tuple[str, int, int, int, int, int]] = []  # +hwnd
 
         WNDENUMPROC = ctypes.WINFUNCTYPE(
             wintypes.BOOL, wintypes.HWND, wintypes.LPARAM
@@ -172,7 +205,7 @@ class WindowCapturer:
             #   - Ignore windows placed far off-screen (negative coords < -1000).
             if width >= 200 and height >= 150:
                 if rect.left >= -1000 and rect.top >= -1000:
-                    candidates.append((title, rect.left, rect.top, width, height))
+                    candidates.append((title, rect.left, rect.top, width, height, hwnd))
             return True
 
         enum_proc = WNDENUMPROC(_enum_handler)
@@ -182,36 +215,35 @@ class WindowCapturer:
         # likely the actual game.
         candidates.sort(key=lambda c: c[3] * c[4], reverse=True)
 
+        def _store_region(title: str, left: int, top: int, width: int, height: int, hwnd: int):
+            self._window_hwnd = hwnd
+            self._window_region = {
+                "left": left,
+                "top": top,
+                "width": width,
+                "height": height,
+            }
+
         # Strategy 1: exact title.
-        for title, left, top, width, height in candidates:
+        for title, left, top, width, height, hwnd in candidates:
             if title.lower() == self._window_title.lower():
+                _store_region(title, left, top, width, height, hwnd)
                 logger.info(
                     f"Found window by exact title: '{title}' "
                     f"({width}x{height} at {left},{top})"
                 )
-                self._window_region = {
-                    "left": left,
-                    "top": top,
-                    "width": width,
-                    "height": height,
-                }
                 return self._window_region
 
         # Strategy 2: keyword match.
-        for title, left, top, width, height in candidates:
+        for title, left, top, width, height, hwnd in candidates:
             title_lower = title.lower()
             for kw in self._window_keywords:
                 if kw.lower() in title_lower:
+                    _store_region(title, left, top, width, height, hwnd)
                     logger.info(
                         f"Found window by keyword '{kw}': '{title}' "
                         f"({width}x{height} at {left},{top})"
                     )
-                    self._window_region = {
-                        "left": left,
-                        "top": top,
-                        "width": width,
-                        "height": height,
-                    }
                     return self._window_region
 
         # Debug: list all visible windows to help diagnose.
