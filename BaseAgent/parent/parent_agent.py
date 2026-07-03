@@ -277,7 +277,7 @@ class ParentAgent(BaseAgent):
 
         # ── 2. Get screenshot — reuse latest frame if fresh ──────────
         screenshot = None
-        latest_state = self._tracker.current()
+        latest_state = self._tracker.current
         if latest_state is not None and latest_state.screenshot is not None:
             from datetime import datetime as _datetime
             age_ms = (_datetime.now() - latest_state.timestamp).total_seconds() * 1000
