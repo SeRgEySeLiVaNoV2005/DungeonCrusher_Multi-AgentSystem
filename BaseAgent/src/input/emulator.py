@@ -113,6 +113,7 @@ class InputEmulator:
         y: int,
         button: MouseButton = MouseButton.LEFT,
         clicks: int = 1,
+        delay: Optional[float] = None,
     ) -> None:
         """Click at screen coordinates.
 
@@ -120,19 +121,22 @@ class InputEmulator:
             x, y: Screen coordinates.
             button: Mouse button to click.
             clicks: 1 = single, 2 = double.
+            delay: Override the instance ``action_delay`` for this click.
+                   If None, uses the configured default.
 
         Raises:
             InputError: If pynput is unavailable or the click fails.
         """
         mc = self._get_mouse()
+        _delay = delay if delay is not None else self._action_delay
         try:
             mc.position = (x, y)
-            time.sleep(self._action_delay)
+            time.sleep(_delay)
 
             btn = self._map_button(button)
             for _ in range(clicks):
                 mc.click(btn, 1)
-                time.sleep(self._action_delay)
+                time.sleep(_delay)
         except Exception as exc:
             raise InputError(f"Mouse click failed at ({x}, {y}): {exc}") from exc
 

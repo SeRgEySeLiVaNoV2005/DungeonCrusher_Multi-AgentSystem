@@ -229,10 +229,14 @@ class WindowCapturer:
         """The current window bounding box, or ``None`` if not yet located."""
         return self._window_region
 
-    def bring_to_front(self) -> bool:
+    def bring_to_front(self, wait: bool = True) -> bool:
         """Bring the game window to the foreground (top of Z-order).
 
         Call this before capturing if the game might be behind other windows.
+
+        Args:
+            wait: If True, sleep 150ms for the window to render. Set False
+                  when calling after a click (game already has focus).
 
         Returns:
             ``True`` if the window was successfully brought to front.
@@ -252,9 +256,9 @@ class WindowCapturer:
 
             # Bring to front.
             user32.SetForegroundWindow(self._window_hwnd)
-            # Allow the window to render after coming to front.
-            import time
-            time.sleep(0.15)
+            if wait:
+                import time
+                time.sleep(0.15)
             logger.debug("Game window brought to front")
             return True
         except Exception:
