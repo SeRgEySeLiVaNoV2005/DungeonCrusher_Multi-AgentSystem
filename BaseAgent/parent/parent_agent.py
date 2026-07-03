@@ -275,17 +275,10 @@ class ParentAgent(BaseAgent):
             self._publish_result(False, target)
             return
 
-        # ── 2. Capture screen ───────────────────────────────────────
-        hidden = self._capturer.hide_other_windows()
-        import time
-        time.sleep(0.3)  # Let the desktop settle.
+        # ── 2. Capture screen (fast — no window hiding) ──────────────
         try:
-            screenshot = self._capturer._capture_via_mss()
+            screenshot = self._capturer.capture()
         except Exception:
-            screenshot = None
-        self._capturer.show_windows(hidden)
-
-        if screenshot is None:
             logger.warning("[Cmd] Failed to capture screenshot")
             self._publish_result(False, display_name)
             return
@@ -325,6 +318,9 @@ class ParentAgent(BaseAgent):
         except Exception:
             logger.exception(f"[Cmd] Click failed at ({screen_x}, {screen_y})")
             self._publish_result(False, display_name)
+
+        # ── 7. Return focus to the game ─────────────────────────────
+        self._capturer.bring_to_front()
 
     # ------------------------------------------------------------------
     # Command helpers

@@ -38,6 +38,7 @@
     │   ├── vision/        # template_matcher.py, ocr.py
     │   ├── communication/ # message_bus.py
     │   ├── game_state/    # state.py
+    │   ├── ui/            # command_overlay.py (НОВОЕ)
     │   └── launcher/      # launcher.py (CLI)
     ├── config/settings.yaml
     ├── tests/             # 79 тестов (16 core + 38 tooltip + 19 sm + 22 combat)
@@ -83,18 +84,25 @@ d8b248a fix(config): add Russian and VK Play window search keywords
 - **79 тестов**, все проходят
 - 16 test_core, 19 test_state_machine, 22 test_combat_agent, 22 test_tooltip_reader
 
+### Этап 4: Command Overlay (1 коммит — СЕГОДНЯ)
+- **CommandOverlay** — плавающее окно ввода поверх игры (tkinter)
+  - always-on-top, полупрозрачное (α=0.85), без рамки
+  - Ввод названия кнопки → Enter → поиск шаблона → клик
+  - Ctrl+Shift+K — фокус на поле ввода (Win32 RegisterHotKey)
+  - Русские алиасы: настройки→nastroyki, магазин→magazin и т.д.
+  - Обратная связь: ✓ зелёный / ✗ красный в лейбле
+- **ParentAgent._on_user_command()** — теперь реально КЛИКАЕТ
+  - 3 стратегии поиска: UIElementDB → русские алиасы → имена шаблонов
+  - Публикация COMMAND_RESULT для оверлея
+- **Launcher** — оверлей на главном потоке, ParentAgent в daemon
+
 ## Что дальше
 
 1. **Установить Tesseract OCR** — системная зависимость (нужно разрешение)
-2. **Создать шаблоны UI-элементов** — запустить игру, использовать CTRL+H для захвата:
-   - enemy_health_bar — красная полоска здоровья врага
-   - battle_banner — баннер начала боя
-   - combat_ability_frame — рамка способностей
-   - victory_screen — экран победы
-3. **Протестировать CombatAgent** на реальной игре
-4. **Навигационный агент** (NavigationAgent) — перемещение по карте
-5. **Агент сбора ресурсов** (ResourceAgent) — сбор золота/душ
-6. **Обучение с учителем** (human-in-the-loop) — демонстрация действий
+2. **Протестировать CommandOverlay** на реальной игре
+3. **Навигационный агент** (NavigationAgent) — перемещение по карте
+4. **Агент сбора ресурсов** (ResourceAgent) — сбор золота/душ
+5. **Обучение с учителем** (human-in-the-loop) — демонстрация действий
 
 ## Правила работы
 

@@ -36,7 +36,7 @@ FONT_SIZE = 11
 AUTO_HIDE_DELAY = 4.0           # Seconds to keep result message visible.
 HOTKEY_ID = 1
 HOTKEY_MOD = 0x0002 | 0x0004    # MOD_CONTROL | MOD_SHIFT
-HOTKEY_KEY = 0x4B               # 'K'
+HOTKEY_KEY = 0x4A               # 'J'
 
 
 class CommandOverlay:
@@ -46,7 +46,7 @@ class CommandOverlay:
     top edge of the game window. It publishes ``USER_COMMAND`` messages
     on Enter and displays results from ``COMMAND_RESULT`` messages.
 
-    Uses Win32 ``RegisterHotKey`` for a global Ctrl+Shift+K shortcut that
+    Uses Win32 ``RegisterHotKey`` for a global Ctrl+Shift+J shortcut that
     focuses the input field from anywhere (including inside the game).
     """
 
@@ -145,7 +145,7 @@ class CommandOverlay:
         # Hint label (right side).
         self._hint = tk.Label(
             frame,
-            text="Ctrl+Shift+K",
+            text="Ctrl+Shift+J",
             bg=BG_COLOR,
             fg="#555555",
             font=(FONT_FAMILY, 8),
@@ -197,7 +197,7 @@ class CommandOverlay:
     # ------------------------------------------------------------------
 
     def _register_hotkey(self) -> None:
-        """Register Ctrl+Shift+K as a global hotkey."""
+        """Register Ctrl+Shift+J as a global hotkey."""
         if self._hotkey_registered:
             return
         try:
@@ -212,7 +212,7 @@ class CommandOverlay:
             result = user32.RegisterHotKey(hwnd, HOTKEY_ID, HOTKEY_MOD, HOTKEY_KEY)
             if result == 0:
                 logger.warning(
-                    "Could not register Ctrl+Shift+K hotkey — "
+                    "Could not register Ctrl+Shift+J hotkey — "
                     "it may be in use by another program"
                 )
                 return
@@ -223,7 +223,7 @@ class CommandOverlay:
             # (not available on Windows). Instead, poll via tkinter's after().
             self._poll_hotkey()
 
-            logger.info("Hotkey registered: Ctrl+Shift+K → focus overlay")
+            logger.info("Hotkey registered: Ctrl+Shift+J → focus overlay")
         except Exception:
             logger.debug("Hotkey registration failed", exc_info=True)
 
