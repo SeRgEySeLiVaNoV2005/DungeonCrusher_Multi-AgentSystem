@@ -312,13 +312,14 @@ document.addEventListener('input', function(e) {
 async function sendCommand() {
   const input = document.getElementById('cmdInput');
   const status = document.getElementById('cmdStatus');
+  const wrap = document.getElementById('debugPreviewWrap');
   const preview = document.getElementById('debugPreview');
   const name = input.value.trim();
   if (!name) return;
 
   status.textContent = 'Searching...';
   status.className = '';
-  preview.parentNode.style.display = 'none';
+  wrap.style.display = 'none';
   try {
     const resp = await fetch('/api/command', {
       method: 'POST',
@@ -328,14 +329,16 @@ async function sendCommand() {
     const data = await resp.json();
     if (data.ok) {
       status.textContent = data.message || 'Found!';
-      status.className = 'ok';
+      status.className = data.found ? 'ok' : 'err';
+      // Show inline base64 image — no file cache issues.
+      if (data.image_base64) {
+        preview.src = 'data:image/png;base64,' + data.image_base64;
+        wrap.style.display = 'block';
+      }
     } else {
       status.textContent = data.error || 'Not found';
       status.className = 'err';
     }
-    // Always show debug image — it helps diagnose.
-    preview.src = '/api/debug-image?t=' + Date.now();
-    preview.parentNode.style.display = 'block';
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     status.className = 'err';
@@ -376,6 +379,8 @@ class _ReviewHandler(BaseHTTPRequestHandler):
     matcher = None  # type: ignore[assignment]
     # Reference to the message bus for sending commands.
     bus = None  # type: ignore[assignment]
+    # Reference to the window capturer for direct screenshot capture.
+    capturer = None  # type: ignore[assignment]
 
     def log_message(self, format, *args):  # noqa: A002
         """Suppress default HTTP request logging."""
@@ -518,25 +523,95 @@ class _ReviewHandler(BaseHTTPRequestHandler):
             self._send_json({"ok": True, "message": "Updated"})
 
     def _handle_command(self, body: dict) -> None:
-        """Publish a USER_COMMAND message to find and click a button."""
+        """Find a UI element on screen and return a debug screenshot.
+
+        Does everything synchronously — no message bus, no file caching.
+        Returns the annotated screenshot as base64 in the JSON response.
+        """
+        import base64
+        import time
+        import cv2
+        import numpy as np
+
         name = body.get("name", "").strip()
         if not name:
             self._send_json({"ok": False, "error": "No name provided"}, 400)
             return
 
-        if self.bus is None:
-            self._send_json({"ok": False, "error": "Message bus not available"}, 500)
+        if self.db is None or self.matcher is None or self.capturer is None:
+            self._send_json({"ok": False, "error": "System not ready"}, 500)
             return
 
-        from src.communication.message_bus import Message, MessageType
+        # 1. Look up in DB.
+        record = self.db.get(name)
+        if record is None:
+            for el in self.db.list_all():
+                if el.name.lower() == name.lower():
+                    record = el
+                    break
+        if record is None:
+            names = ", ".join(e.name for e in self.db.list_all())
+            self._send_json({
+                "ok": False,
+                "error": f"Element '{name}' not found. Available: {names}",
+            })
+            return
 
-        self.bus.publish(Message(
-            type=MessageType.USER_COMMAND,
-            source="web-ui",
-            payload=name,
-        ))
-        logger.info(f"[WebReview] Command: click '{name}'")
-        self._send_json({"ok": True, "message": f"Searching for '{name}'..."})
+        # 2. Hide all windows except the game, capture directly.
+        hidden = self.capturer.hide_other_windows()
+        time.sleep(0.3)
+        try:
+            screenshot = self.capturer._capture_via_mss()
+        except Exception:
+            screenshot = None
+        self.capturer.show_windows(hidden)
+
+        if screenshot is None or screenshot.size == 0:
+            self._send_json({"ok": False, "error": "Failed to capture screen"}, 500)
+            return
+
+        # 3. Template match.
+        match = self.matcher.find(screenshot, record.id)
+
+        # 4. Draw red highlight.
+        image = screenshot.copy()
+        if match is not None:
+            left, top, w, h = match.bounds
+            cv2.rectangle(image, (left, top), (left + w, top + h), (0, 0, 255), 3)
+            label = f"{record.name} ({match.confidence:.2f})"
+            (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+            label_y = top - 8 if top > th + 8 else top + h + th + 8
+            cv2.rectangle(image, (left, label_y - th - 4), (left + tw + 4, label_y + 2), (0, 0, 255), -1)
+            cv2.putText(image, label, (left + 2, label_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+
+        # 5. Encode as base64 PNG.
+        _, buf = cv2.imencode(".png", image)
+        img_b64 = base64.b64encode(buf).decode("ascii")
+
+        # 6. Also save to disk for the /api/debug-image fallback.
+        from pathlib import Path
+        debug_dir = Path("resources")
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(debug_dir / "debug_preview.png"), image)
+
+        if match is not None:
+            region = self.capturer.window_region or {}
+            sx = region.get("left", 0) + match.center[0]
+            sy = region.get("top", 0) + match.center[1]
+            msg = (
+                f"Found '{record.name}' at screen ({sx}, {sy}), "
+                f"confidence={match.confidence:.2f}"
+            )
+        else:
+            msg = f"Template '{record.id}' not found on screen"
+
+        logger.info(f"[WebReview] Command: {msg}")
+        self._send_json({
+            "ok": True,
+            "message": msg,
+            "found": match is not None,
+            "image_base64": img_b64,
+        })
 
     def _handle_discard(self, element_id: str) -> None:
         removed = self.store.remove(element_id)
@@ -594,6 +669,7 @@ class WebReviewServer:
         db: "UIElementDB",
         matcher=None,
         bus=None,
+        capturer=None,
         host: str = "127.0.0.1",
         port: int = 8765,
     ) -> None:
@@ -604,6 +680,8 @@ class WebReviewServer:
             matcher: Optional :class:`TemplateMatcher` — if provided,
                      newly saved elements are registered at runtime.
             bus: Optional :class:`MessageBus` — for sending user commands.
+            capturer: Optional :class:`WindowCapturer` — for direct
+                      screenshot capture in command handler.
             host: Bind address.
             port: Bind port.
         """
@@ -611,6 +689,7 @@ class WebReviewServer:
         self._db = db
         self._matcher = matcher
         self._bus = bus
+        self._capturer = capturer
         self._host = host
         self._port = port
         self._httpd: Optional[HTTPServer] = None
@@ -627,6 +706,7 @@ class WebReviewServer:
         _ReviewHandler.db = self._db
         _ReviewHandler.matcher = self._matcher
         _ReviewHandler.bus = self._bus
+        _ReviewHandler.capturer = self._capturer
 
         self._httpd = HTTPServer((self._host, self._port), _ReviewHandler)
 

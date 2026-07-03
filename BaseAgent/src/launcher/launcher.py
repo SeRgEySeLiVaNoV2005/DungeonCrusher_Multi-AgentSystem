@@ -67,6 +67,7 @@ class SystemLauncher:
         self._ui_element_db: Any = None
         self._web_server: Any = None
         self._template_matcher: Any = None
+        self._capturer: Any = None
 
     def bootstrap(self, dry_run: bool = False) -> None:
         """Create the parent agent and wire everything together.
@@ -167,6 +168,21 @@ class SystemLauncher:
         except Exception:
             logger.exception("Failed to initialize template matcher")
 
+        # Window capturer — shared for command handler in web server.
+        try:
+            from src.capture.window_capturer import WindowCapturer
+
+            self._capturer = WindowCapturer(
+                window_title=self._settings.game.window_title,
+                window_keywords=self._settings.game.window_keywords,
+                monitor=self._settings.capture.monitor,
+                target_fps=self._settings.capture.target_fps,
+            )
+            self._capturer.locate_window()
+            logger.info("Window capturer initialized for web commands")
+        except Exception:
+            logger.warning("Window capturer init failed — Find & Highlight won't work")
+
         # Pending store + UI element database.
         try:
             from tooltip_reader.pending_store import PendingElementStore
@@ -193,6 +209,7 @@ class SystemLauncher:
                 db=self._ui_element_db,
                 matcher=self._template_matcher,
                 bus=self._bus,
+                capturer=self._capturer,
                 host=cfg.host,
                 port=cfg.port,
             )
