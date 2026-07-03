@@ -79,3 +79,4 @@ automatic_leveling:
   red_template: "prokachka"
   gray_template: "seraya_knopka"
   hire_template: "nanyat"
+  end_template: "end"

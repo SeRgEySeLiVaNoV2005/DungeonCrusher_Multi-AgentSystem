@@ -121,6 +121,9 @@ class AutomaticLevelingConfig:
     hire_template: str = "nanyat"
     """Template name for the purple hire button (functionally = red)."""
 
+    end_template: str = "end"
+    """Template name for the end-of-list marker in the Heroes tab."""
+
 
 @dataclass
 class WebReviewConfig:
@@ -261,6 +264,7 @@ def load_config(path: Optional[str] = None) -> Settings:
             red_template=leveling_raw.get("red_template", "prokachka"),
             gray_template=leveling_raw.get("gray_template", "seraya_knopka"),
             hire_template=leveling_raw.get("hire_template", "nanyat"),
+            end_template=leveling_raw.get("end_template", "end"),
         ),
         logging=LoggingConfig(
             level=logging_raw.get("level", "INFO"),

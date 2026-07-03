@@ -87,6 +87,7 @@ def agent(bus, matcher) -> AutomaticLevelingHeroesAgent:
         red_template="prokachka",
         gray_template="prokachka_gray",
         hire_template="HiringHero",
+        end_template="end",
     )
     a = AutomaticLevelingHeroesAgent(
         name="test_leveling",
@@ -349,14 +350,18 @@ class TestScanningAndLeveling:
         assert agent.leveling_state == LevelingState.SCANNING
 
     def test_scrolling_done_transitions_to_done(self, agent, matcher):
-        """After max_scrolls without finding a red button → DONE."""
+        """After bidirectional scrolling with no buttons → DONE.
+
+        Now requires 4× max_scrolls: down+up for pass 1, down+up for pass 2.
+        """
         self._force_to_scanning(agent, matcher)
 
-        # No red buttons — agent will scroll.
+        # No red buttons / end template — agent will scroll.
         matcher.find_one.return_value = None
 
-        # Drive many frames to exhaust max_scrolls (5).
-        for _ in range(agent._cfg.max_scrolls * agent._cfg.scan_interval_frames + 10):
+        # 4 passes: down+up (pass 1) + down+up (pass 2).
+        frames_needed = agent._cfg.max_scrolls * agent._cfg.scan_interval_frames * 4 + 20
+        for _ in range(frames_needed):
             agent.on_frame(_message(_make_frame(_make_screenshot())))
             if agent.leveling_state == LevelingState.DONE:
                 break
@@ -373,7 +378,9 @@ class TestScanningAndLeveling:
             "agents.automatic_leveling_heroes.automatic_leveling_heroes_agent._get_idle_seconds",
             return_value=0.0,  # Not idle — prevent NAVIGATING re-entry.
         ):
-            for _ in range(agent._cfg.max_scrolls * agent._cfg.scan_interval_frames + 10):
+            # 4×: down+up (pass 1) + down+up (pass 2).
+            frames_needed = agent._cfg.max_scrolls * agent._cfg.scan_interval_frames * 4 + 20
+            for _ in range(frames_needed):
                 agent.on_frame(_message(_make_frame(_make_screenshot())))
                 if agent.leveling_state == LevelingState.DONE:
                     break
@@ -489,6 +496,104 @@ class TestEdgeCases:
         """LevelingState() with unknown string returns IDLE."""
         agent._fsm._current = "garbage"
         assert agent.leveling_state == LevelingState.IDLE
+
+
+# ---------------------------------------------------------------------------
+# End-of-list detection
+# ---------------------------------------------------------------------------
+
+
+class TestEndOfListDetection:
+    def _force_to_scanning(self, agent, matcher):
+        """Helper: force the agent into SCANNING state."""
+        from src.vision.template_matcher import MatchResult
+
+        matcher.find_one.return_value = MatchResult(
+            name="geroi", confidence=0.9, x=100, y=50,
+            bounds=(90, 40, 20, 20),
+        )
+        with patch(
+            "agents.automatic_leveling_heroes.automatic_leveling_heroes_agent._get_idle_seconds",
+            return_value=120.0,
+        ):
+            agent.on_frame(_message(_make_frame(_make_screenshot())))
+        agent.on_frame(_message(_make_frame(_make_screenshot())))
+        assert agent.leveling_state == LevelingState.SCANNING
+
+    def test_end_template_reverses_direction(self, agent, matcher):
+        """When end.png is found while scrolling down, direction flips to up."""
+        self._force_to_scanning(agent, matcher)
+        assert agent._scroll_direction == -1  # Down initially.
+
+        from src.vision.template_matcher import MatchResult
+
+        # Use side_effect so only the "end" template matches, not hire/red.
+        end_match = MatchResult(
+            name="end", confidence=0.85, x=400, y=500,
+            bounds=(390, 490, 20, 20),
+        )
+
+        def _find_one(screenshot, name):
+            if name == "end":
+                return end_match
+            return None
+
+        matcher.find_one.side_effect = _find_one
+        agent.on_frame(_message(_make_frame(_make_screenshot())))
+        # end.png guard fires → self-transition SCANNING → SCANNING.
+        assert agent._scroll_direction == 1  # Flipped to up.
+        assert agent._scroll_count == 0  # Reset.
+
+    def test_end_ignored_when_scrolling_up(self, agent, matcher):
+        """end.png is NOT detected when already scrolling up."""
+        self._force_to_scanning(agent, matcher)
+        agent._scroll_direction = 1  # Already scrolling up.
+
+        from src.vision.template_matcher import MatchResult
+
+        matcher.find_one.return_value = MatchResult(
+            name="end", confidence=0.85, x=400, y=500,
+            bounds=(390, 490, 20, 20),
+        )
+        agent.on_frame(_message(_make_frame(_make_screenshot())))
+        # Direction stays +1, no re-trigger.
+        assert agent._scroll_direction == 1
+
+    def test_scrolling_up_exhausts_pass(self, agent, matcher):
+        """After reversing up, max_scrolls ends the pass."""
+        self._force_to_scanning(agent, matcher)
+        agent._scroll_direction = 1  # Already reversed up.
+        agent._scroll_count = agent._cfg.max_scrolls - 1  # One away from exhaustion.
+
+        matcher.find_one.return_value = None
+        # Drive frames until _guard_scrolling_done fires.
+        for _ in range(10):
+            agent.on_frame(_message(_make_frame(_make_screenshot())))
+            if agent._pass == 2:  # Pass 1 → Pass 2 after up exhaust.
+                break
+
+        assert agent._pass == 2
+        assert agent._scroll_direction == -1  # Reset to down for pass 2.
+        assert agent._scroll_count == 0
+
+    def test_end_and_button_both_visible(self, agent, matcher):
+        """If both end.png and a hire button are visible, button takes priority."""
+        self._force_to_scanning(agent, matcher)
+
+        # First call: geroi (already matched in _force_to_scanning).
+        # Then end.png should NOT fire because button guard is checked first.
+        # We need end.png to be returned after button match.
+        from src.vision.template_matcher import MatchResult
+
+        # Return a hire button — this should trigger LEVELING, not the end guard.
+        matcher.find_one.return_value = MatchResult(
+            name="HiringHero", confidence=0.85, x=600, y=300,
+            bounds=(590, 290, 20, 20),
+        )
+        agent.on_frame(_message(_make_frame(_make_screenshot())))
+        # Button found → LEVELING, not end.png self-transition.
+        assert agent.leveling_state == LevelingState.LEVELING
+        assert agent._scroll_direction == -1  # Still down, end didn't fire.
 
 
 # ---------------------------------------------------------------------------

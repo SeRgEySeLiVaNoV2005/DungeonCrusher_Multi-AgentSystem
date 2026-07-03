@@ -15,6 +15,7 @@ The agent runs a finite-state machine with five states:
     NAVIGATING ──(geroi tab found)─────▶ SCANNING
     NAVIGATING ──(timeout)──────────────▶ IDLE
     SCANNING ──(red button found)──────▶ LEVELING
+    SCANNING ──(end.png found)─────────▶ SCANNING  (reverse up)
     SCANNING ──(max scrolls reached)───▶ DONE
     LEVELING ──(click done)────────────▶ SCANNING  (continue scanning)
     DONE ──(cooldown)──────────────────▶ IDLE
@@ -165,6 +166,7 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         self._current_level_button: Optional[MatchResult] = None
         self._pass: int = 1  # 1 = hire pass, 2 = level pass
         self._scrolled_to_top: bool = False  # Initial scroll-up flag.
+        self._scroll_direction: int = -1  # -1 = down, +1 = up
 
         # Stats.
         self._total_hires: int = 0
@@ -322,6 +324,13 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
             self._guard_red_button_found,
             "red level-up button found",
         )
+        # SCANNING → SCANNING: end-of-list detected, reverse direction.
+        self._fsm.add_transition(
+            LevelingState.SCANNING.value,
+            LevelingState.SCANNING.value,
+            self._guard_end_of_list_found,
+            "end of list — reverse to scrolling up",
+        )
         # SCANNING → DONE: scrolled through entire list.
         self._fsm.add_transition(
             LevelingState.SCANNING.value,
@@ -374,6 +383,31 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         """True if we've been navigating too long without finding the tab."""
         return self._navigate_countdown <= 0
 
+    def _guard_end_of_list_found(self) -> bool:
+        """True when the ``end`` template is detected while scrolling down.
+
+        Flips scroll direction to up and resets the scroll counter.
+        Only fires when scrolling down — prevents re-triggering on the
+        way back up.
+        """
+        if self._scroll_direction != -1:
+            return False
+        if self._current_screenshot is None:
+            return False
+        match = self._matcher.find_one(
+            self._current_screenshot, self._cfg.end_template
+        )
+        if match is not None:
+            logger.info(
+                f"[Leveling] End-of-list FOUND at "
+                f"({match.center[0]}, {match.center[1]}) "
+                f"confidence={match.confidence:.2f} — reversing up"
+            )
+            self._scroll_direction = 1
+            self._scroll_count = 0
+            return True
+        return False
+
     def _guard_red_button_found(self) -> bool:
         """True if a clickable button is visible on the current pass.
 
@@ -404,14 +438,24 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
     def _guard_scrolling_done(self) -> bool:
         """True when both passes have exhausted the hero list.
 
-        Pass 1 (hire) → switches to pass 2 (level) and resets scroll.
-        Pass 2 (level) → transitions to DONE.
+        Scrolling up max reached → at top of the list.
+        Pass 1 (hire) up-complete → switches to pass 2 (level down).
+        Pass 2 (level) up-complete → transitions to DONE.
         """
         if self._scroll_count < self._cfg.max_scrolls:
             return False
+        # Max scrolls reached in current direction.
+        # If scrolling down and end.png wasn't found, flip to up anyway.
+        if self._scroll_direction == -1:
+            self._scroll_direction = 1
+            self._scroll_count = 0
+            logger.info("[Leveling] Max down scrolls — reversing to scroll up")
+            return False
+        # Scrolling up max reached = at top of list.
         if self._pass == 1:
             self._pass = 2
             self._scroll_count = 0
+            self._scroll_direction = -1
             logger.info(
                 f"[Leveling] Hire pass complete ({self._total_hires} hired). "
                 f"Starting level pass..."
@@ -447,6 +491,7 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         self._navigate_countdown = self._cfg.navigate_check_frames
         self._scroll_count = 0
         self._pass = 1  # Start with hire pass.
+        self._scroll_direction = -1  # Start scrolling down.
         self._scrolled_to_top = False
 
         if self._current_screenshot is not None:
@@ -488,10 +533,12 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
     def _on_scanning_update(self) -> None:
         self._scan_countdown -= 1
         if self._scan_countdown <= 0:
-            # Scroll down to reveal more heroes.
             self._scroll_count += 1
             self.request_action(
-                ScrollAction(dy=-1, amount=self._cfg.scroll_clicks),
+                ScrollAction(
+                    dy=self._scroll_direction,
+                    amount=self._cfg.scroll_clicks,
+                ),
                 WaitAction(self._cfg.scroll_delay),
             )
             self._scan_countdown = self._cfg.scan_interval_frames
