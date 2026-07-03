@@ -10,7 +10,7 @@ The parent agent owns the main loop:
 from __future__ import annotations
 
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from base.base_agent import BaseAgent
 from src.capture.window_capturer import WindowCapturer
@@ -186,16 +186,43 @@ class ParentAgent(BaseAgent):
             )
 
     # ------------------------------------------------------------------
-    # User commands (console)
+    # Russian → template-id aliases (for direct template matching).
+    # ------------------------------------------------------------------
+
+    RUSSIAN_ALIASES: Dict[str, str] = {
+        "настройки": "nastroyki",
+        "магазин": "magazin",
+        "герои": "geroi",
+        "почта": "pochta",
+        "предметы": "predmety",
+        "крафт": "kraft",
+        "pvp": "pvp",
+        "артефакты": "artefakty",
+        "достижения": "dostizheniya",
+        "статистика": "statistika",
+        "осады": "osady",
+        "лиги": "ligi",
+        "события": "sobytiya",
+        "способности": "sposobnosti",
+    }
+
+    # ------------------------------------------------------------------
+    # User commands (console / overlay)
     # ------------------------------------------------------------------
 
     def _on_user_command(self, message: Message) -> None:
-        """Handle a console command from the user.
+        """Handle a user command — find a UI element and click it.
 
-        Payload is a string — the name or id of a UI element to find and click.
+        Payload is a string: the name or id of a UI element.
+
+        Resolution order:
+        1. UI element database (by name or id).
+        2. Template matcher (by template filename).
+        3. Russian alias mapping (e.g. ``"настройки"`` → ``"nastroyki"``).
         """
         if self._matcher is None or self._emulator is None:
             logger.warning("[Cmd] Cannot execute — subsystems not ready")
+            self._publish_result(False, "(система не готова)")
             return
 
         target = message.payload
@@ -205,37 +232,50 @@ class ParentAgent(BaseAgent):
         target = target.strip()
         logger.info(f"[Cmd] Looking for '{target}'...")
 
-        # 1. Look up in the UI element database.
-        record = None
-        if self._ui_element_db is not None:
-            record = self._ui_element_db.get(target)
-            if record is None:
-                # Try to find by name (case-insensitive).
-                for el in self._ui_element_db.list_all():
-                    if el.name.lower() == target.lower():
-                        record = el
-                        break
-            if record is None:
-                # Try to find by id (transliterated from Russian).
-                for el in self._ui_element_db.list_all():
-                    if el.id.lower() == target.lower():
-                        record = el
-                        break
+        # ── 1. Resolve target to a template ID ──────────────────────
+        template_id: Optional[str] = None
+        display_name: str = target
 
-        if record is None:
+        # 1a. Look up in the UI element database.
+        if self._ui_element_db is not None:
+            template_id, display_name = self._resolve_from_db(target)
+            if template_id is not None:
+                logger.info(
+                    f"[Cmd] Found '{display_name}' (id={template_id}) in DB"
+                )
+
+        # 1b. Try Russian alias mapping.
+        if template_id is None:
+            alias_id = self.RUSSIAN_ALIASES.get(target.lower())
+            if alias_id is not None:
+                # Verify the template is actually loaded.
+                if alias_id in self._matcher.template_names:
+                    template_id = alias_id
+                    logger.info(
+                        f"[Cmd] Resolved alias '{target}' → template '{template_id}'"
+                    )
+
+        # 1c. Try direct template name match (case-insensitive).
+        if template_id is None:
+            for tpl_name in self._matcher.template_names:
+                if tpl_name.lower() == target.lower():
+                    template_id = tpl_name
+                    display_name = tpl_name
+                    logger.info(
+                        f"[Cmd] Matched template by name: '{template_id}'"
+                    )
+                    break
+
+        if template_id is None:
             logger.warning(
-                f"[Cmd] Element '{target}' not found in database. "
-                f"Available: {self._db_names()}"
+                f"[Cmd] Element '{target}' not found. "
+                f"DB names: {self._db_names()}. "
+                f"Templates: {list(self._matcher.template_names)}"
             )
+            self._publish_result(False, target)
             return
 
-        logger.info(
-            f"[Cmd] Found '{record.name}' (id={record.id}) — searching on screen..."
-        )
-
-        # 2. Hide all windows except the game, capture, then restore.
-        #    PrintWindow doesn't work with DirectX, and MSS captures
-        #    whatever is on top — so we temporarily clear the screen.
+        # ── 2. Capture screen ───────────────────────────────────────
         hidden = self._capturer.hide_other_windows()
         import time
         time.sleep(0.3)  # Let the desktop settle.
@@ -247,22 +287,21 @@ class ParentAgent(BaseAgent):
 
         if screenshot is None:
             logger.warning("[Cmd] Failed to capture screenshot")
+            self._publish_result(False, display_name)
             return
 
-        # 3. Match the template.
-        match = self._matcher.find(screenshot, record.id)
+        # ── 3. Match template on screen ─────────────────────────────
+        match = self._matcher.find(screenshot, template_id)
         if match is None:
             logger.warning(
-                f"[Cmd] Template '{record.id}' not found on screen. "
+                f"[Cmd] Template '{template_id}' not found on screen. "
                 f"Confidence threshold: {self._matcher._confidence}"
             )
-            # Save a debug image anyway so the user can see what's on screen.
-            self._save_debug_image(screenshot, None, record.name, record.id)
+            self._save_debug_image(screenshot, None, display_name, template_id)
+            self._publish_result(False, display_name)
             return
 
-        # 4. Draw a red highlight around the match and save as debug image.
-        self._save_debug_image(screenshot, match, record.name, record.id)
-
+        # ── 4. Calculate screen coordinates ─────────────────────────
         region = self._capturer.window_region
         if region:
             screen_x = region["left"] + match.center[0]
@@ -270,11 +309,57 @@ class ParentAgent(BaseAgent):
         else:
             screen_x, screen_y = match.center
 
+        # ── 5. Save debug image ─────────────────────────────────────
+        self._save_debug_image(screenshot, match, display_name, template_id)
+
+        # ── 6. CLICK! ──────────────────────────────────────────────
         logger.info(
-            f"[Cmd] Found '{record.name}' at window ({match.center[0]}, {match.center[1]}), "
-            f"screen ({screen_x}, {screen_y}), "
-            f"confidence={match.confidence:.2f}. "
-            f"Debug image saved — check http://localhost:8765"
+            f"[Cmd] CLICK '{display_name}' at screen ({screen_x}, {screen_y}), "
+            f"confidence={match.confidence:.2f}"
+        )
+
+        try:
+            self._emulator.click(screen_x, screen_y)
+            logger.info(f"[Cmd] ✓ Click executed at ({screen_x}, {screen_y})")
+            self._publish_result(True, display_name)
+        except Exception:
+            logger.exception(f"[Cmd] Click failed at ({screen_x}, {screen_y})")
+            self._publish_result(False, display_name)
+
+    # ------------------------------------------------------------------
+    # Command helpers
+    # ------------------------------------------------------------------
+
+    def _resolve_from_db(self, target: str) -> Tuple[Optional[str], str]:
+        """Search the UI element database for *target*.
+
+        Returns:
+            ``(template_id, display_name)`` or ``(None, target)``.
+        """
+        if self._ui_element_db is None:
+            return (None, target)
+
+        record = self._ui_element_db.get(target)
+        if record is not None:
+            return (record.id, record.name)
+
+        # Case-insensitive name search.
+        for el in self._ui_element_db.list_all():
+            if el.name.lower() == target.lower():
+                return (el.id, el.name)
+
+        # Case-insensitive id search.
+        for el in self._ui_element_db.list_all():
+            if el.id.lower() == target.lower():
+                return (el.id, el.name)
+
+        return (None, target)
+
+    def _publish_result(self, success: bool, name: str) -> None:
+        """Publish a COMMAND_RESULT message so the overlay can show feedback."""
+        self.publish(
+            MessageType.COMMAND_RESULT,
+            payload={"success": success, "name": name},
         )
 
     def _save_debug_image(

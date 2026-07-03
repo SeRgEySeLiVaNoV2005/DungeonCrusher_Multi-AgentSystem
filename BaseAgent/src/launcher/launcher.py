@@ -101,7 +101,12 @@ class SystemLauncher:
         )
 
     def start(self) -> None:
-        """Start the parent agent (main loop). Blocks until interrupted."""
+        """Start the parent agent (main loop) and the command overlay.
+
+        The overlay runs on the **main thread** (tkinter mainloop).
+        The parent agent runs on its own daemon thread.
+        When the overlay is closed, the system shuts down.
+        """
         if self._parent is None:
             raise DungeonCrusherError("Call bootstrap() before start()")
 
@@ -115,16 +120,15 @@ class SystemLauncher:
         # Start parent (creates a daemon thread for the main loop).
         self._parent.start()
 
-        # Start console command reader.
+        # Start console command reader (stdin, daemon thread).
         self._start_console_reader()
 
-        # Block until the parent stops or the user interrupts.
-        try:
-            self._parent.join()
-        except KeyboardInterrupt:
-            logger.info("Interrupted by user")
-        finally:
-            self.shutdown()
+        # Launch the command overlay on the MAIN thread.
+        # Blocks with tkinter mainloop until the user closes it.
+        self._start_overlay()
+
+        # Overlay closed — shut down everything.
+        self.shutdown()
 
     def shutdown(self) -> None:
         """Gracefully stop all agents and release resources."""
@@ -221,6 +225,32 @@ class SystemLauncher:
             )
         except Exception:
             logger.exception("Failed to start web review server")
+
+    def _start_overlay(self) -> None:
+        """Launch the CommandOverlay on the main thread.
+
+        The overlay's tkinter mainloop blocks the calling thread. When the
+        user closes the overlay window, it triggers ``shutdown()`` via the
+        ``set_on_shutdown`` callback.
+        """
+        # Build the game window region from the capturer (if available).
+        game_region = None
+        if self._capturer is not None and self._capturer.window_region is not None:
+            game_region = self._capturer.window_region
+
+        try:
+            from src.ui.command_overlay import CommandOverlay
+
+            self._overlay = CommandOverlay(
+                bus=self._bus,
+                game_window_region=game_region,
+            )
+            self._overlay.set_on_shutdown(lambda: None)  # shutdown() is called after start()
+
+            logger.info("Command overlay starting — type a button name and press Enter")
+            self._overlay.start()
+        except Exception:
+            logger.exception("Failed to start command overlay")
 
     def _start_console_reader(self) -> None:
         """Launch a background thread that reads commands from stdin.

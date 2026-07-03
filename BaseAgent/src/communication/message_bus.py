@@ -47,6 +47,7 @@ class MessageType(Enum):
 
     # --- User commands ---
     USER_COMMAND = auto()       # Console command from the user (e.g. click a button)
+    COMMAND_RESULT = auto()     # Result of a user command (success/failure feedback)
 
 
 @dataclass(frozen=True)
