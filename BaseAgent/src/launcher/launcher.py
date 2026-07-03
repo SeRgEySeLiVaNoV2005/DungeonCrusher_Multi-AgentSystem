@@ -329,6 +329,7 @@ class SystemLauncher:
     def _create_default_children(self) -> None:
         """Create default child agents on bootstrap."""
         self._create_tooltip_reader()
+        self._create_leveling_agent()
         # CombatAgent disabled for now — enable when templates are ready.
         # self._create_combat_agent()
 
@@ -356,6 +357,26 @@ class SystemLauncher:
             self._children.append(agent)
         except Exception:
             logger.exception("Failed to create TooltipReaderAgent")
+
+    def _create_leveling_agent(self) -> None:
+        """Create the AutomaticLevelingHeroesAgent."""
+        if self._template_matcher is None:
+            logger.warning("No template matcher; skipping LevelingAgent")
+            return
+
+        try:
+            from agents.automatic_leveling_heroes import AutomaticLevelingHeroesAgent
+
+            agent = AutomaticLevelingHeroesAgent(
+                name="leveling_01",
+                bus=self._bus,
+                matcher=self._template_matcher,
+                config=self._settings.automatic_leveling,
+            )
+            self._children.append(agent)
+            logger.info("AutomaticLevelingHeroesAgent created")
+        except Exception:
+            logger.exception("Failed to create LevelingAgent")
 
     def _create_combat_agent(self) -> None:
         """Create the CombatAgent if templates are available."""

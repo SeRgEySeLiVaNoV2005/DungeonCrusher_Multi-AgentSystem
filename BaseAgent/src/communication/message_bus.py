@@ -36,6 +36,7 @@ class MessageType(Enum):
     AGENT_STOPPED = auto()
     AGENT_DECISION = auto()     # A child agent made a decision
     AGENT_ACTION_REQUEST = auto()  # Agent wants the parent to execute an action
+    AGENT_STATUS = auto()         # Agent working/idle status heartbeat
 
     # --- Game state ---
     STATE_UPDATED = auto()      # Game state changed

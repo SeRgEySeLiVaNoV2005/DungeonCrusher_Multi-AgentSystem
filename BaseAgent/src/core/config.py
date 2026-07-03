@@ -85,6 +85,41 @@ class TooltipReaderConfig:
 
 
 @dataclass
+class AutomaticLevelingConfig:
+    """Settings for the AutomaticLevelingHeroesAgent."""
+
+    idle_timeout_seconds: int = 60
+    """Seconds of user inactivity before leveling may begin."""
+
+    scroll_clicks: int = 3
+    """Number of mouse-wheel clicks per scroll step."""
+
+    scroll_delay: float = 0.3
+    """Delay (seconds) after each scroll for the UI to update."""
+
+    scan_interval_frames: int = 3
+    """Frames to wait between scan attempts."""
+
+    level_up_wait: float = 0.5
+    """Wait (seconds) after clicking level-up for the animation."""
+
+    navigate_check_frames: int = 15
+    """Frames to wait for the Heroes tab to appear before giving up."""
+
+    max_scrolls: int = 30
+    """Max scroll attempts before declaring the list fully scanned."""
+
+    red_template: str = "prokachka"
+    """Template name for the red (clickable) level-up button."""
+
+    gray_template: str = "prokachka_gray"
+    """Template name for the gray (unavailable) level-up button."""
+
+    hire_template: str = "HiringHero"
+    """Template name for the purple hire button (functionally = red)."""
+
+
+@dataclass
 class WebReviewConfig:
     """Settings for the local web review interface."""
 
@@ -118,6 +153,7 @@ class Settings:
     agents: AgentConfig = field(default_factory=AgentConfig)
     tooltip_reader: TooltipReaderConfig = field(default_factory=TooltipReaderConfig)
     web_review: WebReviewConfig = field(default_factory=WebReviewConfig)
+    automatic_leveling: AutomaticLevelingConfig = field(default_factory=AutomaticLevelingConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
 
 
@@ -183,6 +219,7 @@ def load_config(path: Optional[str] = None) -> Settings:
     agents_raw = raw.get("agents", {})
     tooltip_raw = raw.get("tooltip_reader", {})
     web_review_raw = raw.get("web_review", {})
+    leveling_raw = raw.get("automatic_leveling", {})
     logging_raw = raw.get("logging", {})
 
     return Settings(
@@ -208,6 +245,18 @@ def load_config(path: Optional[str] = None) -> Settings:
         agents=AgentConfig(
             max_children=agents_raw.get("max_children", 8),
             decision_timeout=agents_raw.get("decision_timeout", 1.0),
+        ),
+        automatic_leveling=AutomaticLevelingConfig(
+            idle_timeout_seconds=leveling_raw.get("idle_timeout_seconds", 60),
+            scroll_clicks=leveling_raw.get("scroll_clicks", 3),
+            scroll_delay=leveling_raw.get("scroll_delay", 0.3),
+            scan_interval_frames=leveling_raw.get("scan_interval_frames", 3),
+            level_up_wait=leveling_raw.get("level_up_wait", 0.5),
+            navigate_check_frames=leveling_raw.get("navigate_check_frames", 15),
+            max_scrolls=leveling_raw.get("max_scrolls", 30),
+            red_template=leveling_raw.get("red_template", "prokachka"),
+            gray_template=leveling_raw.get("gray_template", "prokachka_gray"),
+            hire_template=leveling_raw.get("hire_template", "HiringHero"),
         ),
         logging=LoggingConfig(
             level=logging_raw.get("level", "INFO"),

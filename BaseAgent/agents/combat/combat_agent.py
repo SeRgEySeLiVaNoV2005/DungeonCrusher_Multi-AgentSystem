@@ -73,7 +73,7 @@ from typing import Callable, Dict, List, Optional
 import numpy as np
 
 from base.child_agent import ChildAgent
-from src.communication.message_bus import Message
+from src.communication.message_bus import Message, MessageType
 from src.core.logger import get_logger
 from src.core.state_machine import StateMachine
 from src.input.emulator import KeyAction, WaitAction
@@ -466,6 +466,10 @@ class CombatAgent(ChildAgent):
 
     def _on_idle_enter(self) -> None:
         self._scan_countdown = self._scan_interval
+        self.publish(
+            MessageType.AGENT_STATUS,
+            payload={"domain": "combat", "working": False, "state": "idle"},
+        )
         logger.debug("[CombatAgent] Entering IDLE")
 
     def _on_idle_update(self) -> None:
@@ -493,6 +497,10 @@ class CombatAgent(ChildAgent):
         self._ability_index = 0
         # Set cooldown now so the very first tick doesn't fire instantly.
         self._last_ability_time = time.time()
+        self.publish(
+            MessageType.AGENT_STATUS,
+            payload={"domain": "combat", "working": True, "state": "fighting"},
+        )
         logger.info("[CombatAgent] >> COMBAT ENGAGED")
 
     def _on_combat_update(self) -> None:

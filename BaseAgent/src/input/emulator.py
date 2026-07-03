@@ -78,8 +78,22 @@ class WaitAction:
     seconds: float
 
 
+@dataclass(frozen=True)
+class ScrollAction:
+    """Scroll the mouse wheel.
+
+    Negative ``dy`` = scroll down, positive = scroll up.
+    """
+
+    dy: int = -1
+    """Scroll direction: -1 = down, +1 = up."""
+
+    amount: int = 1
+    """Number of scroll steps (clicks)."""
+
+
 # Union type for action sequences.
-Action = Union[ClickAction, KeyAction, WaitAction]
+Action = Union[ClickAction, KeyAction, WaitAction, ScrollAction]
 
 
 # ---------------------------------------------------------------------------
@@ -214,6 +228,26 @@ class InputEmulator:
         except Exception as exc:
             raise InputError(f"Type text failed: {exc}") from exc
 
+    def scroll(self, dy: int = -1, amount: int = 1) -> None:
+        """Scroll the mouse wheel.
+
+        Args:
+            dy: Scroll direction. Negative = scroll down, positive = scroll up.
+            amount: Number of scroll steps (wheel clicks).
+
+        Raises:
+            InputError: If pynput is unavailable or the scroll fails.
+        """
+        mc = self._get_mouse()
+        try:
+            for _ in range(amount):
+                mc.scroll(0, dy)
+                time.sleep(self._action_delay)
+        except Exception as exc:
+            raise InputError(
+                f"Mouse scroll failed (dy={dy}, amount={amount}): {exc}"
+            ) from exc
+
     # ------------------------------------------------------------------
     # Actions (sequences)
     # ------------------------------------------------------------------
@@ -236,6 +270,8 @@ class InputEmulator:
                 self.press(action.key, action.modifiers)
             elif isinstance(action, WaitAction):
                 time.sleep(action.seconds)
+            elif isinstance(action, ScrollAction):
+                self.scroll(action.dy, action.amount)
             else:
                 logger.warning(f"Unknown action type: {type(action)}")
 
