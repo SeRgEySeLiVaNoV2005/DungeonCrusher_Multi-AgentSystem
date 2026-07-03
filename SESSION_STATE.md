@@ -8,7 +8,7 @@
 
 - **Локально:** `C:\Users\dog24\Desktop\Агенты_для_крушителей_подземелий\`
 - **GitHub:** `git@github.com:SeRgEySeLiVaNoV2005/DungeonCrusher_Multi-AgentSystem.git`
-- **Ветка:** `framework-base` (запушена, 13 коммитов)
+- **Ветка:** `framework-base` (запушена, 14 коммитов)
 
 ## Структура проекта (актуальная)
 
@@ -84,14 +84,19 @@
   - Добавлен `import gc`, StateTracker.max_history 300→10
 - **97607b2** `perf(cmd): reuse tracker frame, 2× downscale, remove bring_to_front`
   - Переиспользование последнего кадра из трекера (вместо свежего MSS)
-  - Даунскейл скриншота 2× перед template matching (4× быстрее)
+  - ~~Даунскейл скриншота 2×~~ (откачен в `a092fc1` — ломал template matching)
   - Убран лишний bring_to_front после клика
   - `match_confidence: 0.8→0.6` (после перезагрузки ноутбука часть шаблонов давала <0.8)
   - Задержка CommandOverlay: 700-1000мс → 150-250мс
+- **a092fc1** `fix(cmd): remove 2× downscale that broke template matching`
+  - Шаблон оставался в исходном разрешении, скриншот сжимался → match 0%
+  - Убран даунскейл, скриншот подаётся в оригинальном разрешении
 
 ## Коммиты (последние)
 
 ```
+a092fc1 fix(cmd): remove 2× downscale that broke template matching
+628667b docs: update SESSION_STATE — commit 97607b2 pushed, 13 commits total
 97607b2 perf(cmd): reuse tracker frame, 2× downscale, remove bring_to_front
 9410954 perf: memory optimization — gc import, reduced history buffer
 c0105a3 perf(cmd): 4x latency reduction — fresh MSS, skip find_all, no sleep on click
@@ -112,7 +117,7 @@ a73c76a feat(ui): add command overlay — floating input window for button click
 1. **Tesseract OCR не установлен** — системная зависимость, OCR не работает
 2. **CombatAgent отключен** — нет боевых шаблонов (enemy_health_bar, battle_banner и др.)
 3. **Ctrl+Shift+J занят** — хоткей оверлея не регистрируется, нужно кликать мышкой
-4. **ParentAgent._on_user_command** вызывает приватный метод `_capture_via_mss()` — надо исправить
+4. **ParentAgent._on_user_command** вызывает приватный метод `_capture_via_mss()` — только как fallback, когда трекер пуст
 5. **Нет лимита на `_pending_actions`** — может расти бесконечно при спаме
 
 ## Что дальше
