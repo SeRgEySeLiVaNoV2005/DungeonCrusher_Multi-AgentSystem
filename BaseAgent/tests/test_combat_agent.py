@@ -68,6 +68,8 @@ def matcher() -> MagicMock:
     m = MagicMock()
     m.find_all.return_value = []
     m.confidence = 0.8
+    # CombatAgent guard requires at least one known template to engage.
+    m.template_names = ("enemy_health_bar",)
     return m
 
 

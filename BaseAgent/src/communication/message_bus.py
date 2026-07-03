@@ -45,6 +45,9 @@ class MessageType(Enum):
     UI_ELEMENT_FOUND = auto()   # A template was matched
     UI_ELEMENT_LOST = auto()    # A template disappeared
 
+    # --- User commands ---
+    USER_COMMAND = auto()       # Console command from the user (e.g. click a button)
+
 
 @dataclass(frozen=True)
 class Message:

@@ -89,6 +89,7 @@ class SystemLauncher:
             name="parent",
             bus=self._bus,
             settings=self._settings,
+            ui_element_db=self._ui_element_db,
         )
 
         # Create child agents.
@@ -112,6 +113,9 @@ class SystemLauncher:
 
         # Start parent (creates a daemon thread for the main loop).
         self._parent.start()
+
+        # Start console command reader.
+        self._start_console_reader()
 
         # Block until the parent stops or the user interrupts.
         try:
@@ -188,6 +192,7 @@ class SystemLauncher:
                 store=self._pending_store,
                 db=self._ui_element_db,
                 matcher=self._template_matcher,
+                bus=self._bus,
                 host=cfg.host,
                 port=cfg.port,
             )
@@ -199,6 +204,68 @@ class SystemLauncher:
             )
         except Exception:
             logger.exception("Failed to start web review server")
+
+    def _start_console_reader(self) -> None:
+        """Launch a background thread that reads commands from stdin.
+
+        Type a UI element name (from the database) to find and click it.
+        Type ``list`` to see available elements.
+        Type ``exit`` to shut down.
+        """
+        import threading
+
+        def _reader() -> None:
+            logger.info(
+                "Console ready. Type a button name to click, 'list' to see "
+                "available elements, 'exit' to quit."
+            )
+            while self._parent is not None and self._parent.is_running:
+                try:
+                    line = input()
+                except (EOFError, OSError):
+                    break
+                if not line:
+                    continue
+
+                cmd = line.strip()
+
+                if cmd.lower() == "exit":
+                    logger.info("Exit command received — shutting down")
+                    self.shutdown()
+                    break
+
+                if cmd.lower() == "list":
+                    self._print_db_list()
+                    continue
+
+                # Publish as a user command — ParentAgent handles it.
+                from src.communication.message_bus import Message, MessageType
+                self._bus.publish(Message(
+                    type=MessageType.USER_COMMAND,
+                    source="console",
+                    payload=cmd,
+                ))
+
+        thread = threading.Thread(
+            target=_reader,
+            name="console-reader",
+            daemon=True,
+        )
+        thread.start()
+
+    def _print_db_list(self) -> None:
+        """Print available UI elements to the console."""
+        if self._ui_element_db is None:
+            print("  (no database loaded)")
+            return
+        elements = self._ui_element_db.list_all()
+        if not elements:
+            print("  (database is empty — capture some elements with CTRL+H)")
+            return
+        print(f"  {len(elements)} element(s) in database:")
+        for el in elements:
+            tags = ", ".join(el.tags) if el.tags else "—"
+            print(f"    [{el.id}] {el.name}  |  tags: {tags}")
 
     def _stop_web_server(self) -> None:
         """Shut down the web review server."""

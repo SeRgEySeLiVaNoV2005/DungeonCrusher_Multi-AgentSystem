@@ -105,6 +105,17 @@ _REVIEW_PAGE = r"""<!DOCTYPE html>
   .saved-badge { display: inline-block; background: var(--btn-save);
                  color: #fff; font-size: 0.7rem; padding: 2px 8px;
                  border-radius: 10px; margin-left: 8px; }
+  .command-bar { max-width: 760px; margin: 0 auto 16px auto; display: flex;
+                 gap: 10px; align-items: center; }
+  .command-bar input { flex: 1; background: var(--input-bg);
+    border: 1px solid rgba(255,255,255,0.1); color: var(--text);
+    padding: 8px 12px; border-radius: 4px; font-family: inherit;
+    font-size: 0.95rem; }
+  .command-bar input:focus { outline: none; border-color: var(--accent); }
+  .command-bar .btn { white-space: nowrap; }
+  #cmdStatus { font-size: 0.8rem; color: var(--text-dim); }
+  #cmdStatus.ok { color: var(--btn-save); }
+  #cmdStatus.err { color: #ff6b6b; }
 </style>
 </head>
 <body>
@@ -114,6 +125,13 @@ _REVIEW_PAGE = r"""<!DOCTYPE html>
   <span class="count" id="counter">Loading...</span>
   <button class="btn btn-save" onclick="fetchPending()" style="margin-left:16px;">&#8635; Refresh</button>
 </header>
+
+<div class="command-bar">
+  <input type="text" id="cmdInput" placeholder="Button name (e.g. Герои, Магазин)..."
+         onkeydown="if(event.key==='Enter')sendCommand()">
+  <button class="btn btn-save" onclick="sendCommand()">&#128269; Find &amp; Click</button>
+  <span id="cmdStatus"></span>
+</div>
 
 <div class="container" id="app">
   <div class="empty-state">
@@ -283,6 +301,37 @@ document.addEventListener('input', function(e) {
   }
 });
 
+// ---- Command ----
+async function sendCommand() {
+  const input = document.getElementById('cmdInput');
+  const status = document.getElementById('cmdStatus');
+  const name = input.value.trim();
+  if (!name) return;
+
+  status.textContent = 'Searching...';
+  status.className = '';
+  try {
+    const resp = await fetch('/api/command', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name: name})
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      status.textContent = data.message || 'Clicked!';
+      status.className = 'ok';
+      input.value = '';
+    } else {
+      status.textContent = data.error || 'Not found';
+      status.className = 'err';
+    }
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'err';
+  }
+  setTimeout(function() { status.textContent = ''; status.className = ''; }, 4000);
+}
+
 // ---- Init ----
 fetchPending();
 // No auto-polling — use the Refresh button to see new elements.
@@ -315,6 +364,8 @@ class _ReviewHandler(BaseHTTPRequestHandler):
     # Reference to the template matcher — if set, newly saved elements
     # are registered at runtime without a full reload.
     matcher = None  # type: ignore[assignment]
+    # Reference to the message bus for sending commands.
+    bus = None  # type: ignore[assignment]
 
     def log_message(self, format, *args):  # noqa: A002
         """Suppress default HTTP request logging."""
@@ -342,7 +393,10 @@ class _ReviewHandler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/")
 
-        if path.startswith("/api/pending/"):
+        if path == "/api/command":
+            body = self._read_body()
+            self._handle_command(body)
+        elif path.startswith("/api/pending/"):
             element_id = path.split("/")[-1]
             body = self._read_body()
             self._handle_update(element_id, body)
@@ -432,6 +486,27 @@ class _ReviewHandler(BaseHTTPRequestHandler):
         else:
             self._send_json({"ok": True, "message": "Updated"})
 
+    def _handle_command(self, body: dict) -> None:
+        """Publish a USER_COMMAND message to find and click a button."""
+        name = body.get("name", "").strip()
+        if not name:
+            self._send_json({"ok": False, "error": "No name provided"}, 400)
+            return
+
+        if self.bus is None:
+            self._send_json({"ok": False, "error": "Message bus not available"}, 500)
+            return
+
+        from src.communication.message_bus import Message, MessageType
+
+        self.bus.publish(Message(
+            type=MessageType.USER_COMMAND,
+            source="web-ui",
+            payload=name,
+        ))
+        logger.info(f"[WebReview] Command: click '{name}'")
+        self._send_json({"ok": True, "message": f"Searching for '{name}'..."})
+
     def _handle_discard(self, element_id: str) -> None:
         removed = self.store.remove(element_id)
         if removed:
@@ -487,6 +562,7 @@ class WebReviewServer:
         store: "PendingElementStore",
         db: "UIElementDB",
         matcher=None,
+        bus=None,
         host: str = "127.0.0.1",
         port: int = 8765,
     ) -> None:
@@ -496,12 +572,14 @@ class WebReviewServer:
             db: UI element database for persistence.
             matcher: Optional :class:`TemplateMatcher` — if provided,
                      newly saved elements are registered at runtime.
+            bus: Optional :class:`MessageBus` — for sending user commands.
             host: Bind address.
             port: Bind port.
         """
         self._store = store
         self._db = db
         self._matcher = matcher
+        self._bus = bus
         self._host = host
         self._port = port
         self._httpd: Optional[HTTPServer] = None
@@ -517,6 +595,7 @@ class WebReviewServer:
         _ReviewHandler.store = self._store
         _ReviewHandler.db = self._db
         _ReviewHandler.matcher = self._matcher
+        _ReviewHandler.bus = self._bus
 
         self._httpd = HTTPServer((self._host, self._port), _ReviewHandler)
 

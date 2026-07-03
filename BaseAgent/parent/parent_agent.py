@@ -18,7 +18,7 @@ from src.communication.message_bus import Message, MessageBus, MessageType
 from src.core.config import Settings
 from src.core.logger import get_logger
 from src.game_state.state import GameState, StateTracker
-from src.input.emulator import Action, InputEmulator
+from src.input.emulator import Action, ClickAction, InputEmulator, MouseButton
 from src.vision.ocr import OCREngine
 from src.vision.template_matcher import MatchResult, TemplateMatcher
 
@@ -46,6 +46,7 @@ class ParentAgent(BaseAgent):
         name: str,
         bus: MessageBus,
         settings: Settings,
+        ui_element_db=None,
     ) -> None:
         super().__init__(name, bus)
         self._settings = settings
@@ -57,6 +58,7 @@ class ParentAgent(BaseAgent):
         self._ocr: Optional[OCREngine] = None
         self._emulator: Optional[InputEmulator] = None
         self._tracker: StateTracker = StateTracker()
+        self._ui_element_db = ui_element_db  # For command handling.
 
         # Action queue — populated by child agents.
         self._pending_actions: List[Action] = []
@@ -85,6 +87,11 @@ class ParentAgent(BaseAgent):
         # Subscribe to action requests from child agents.
         self.bus.add_subscriber(
             self._on_action_request, MessageType.AGENT_ACTION_REQUEST
+        )
+
+        # Subscribe to user console commands.
+        self.bus.add_subscriber(
+            self._on_user_command, MessageType.USER_COMMAND
         )
 
         # Broadcast system start.
@@ -177,6 +184,99 @@ class ParentAgent(BaseAgent):
             logger.debug(
                 f"Received action from '{message.source}': {type(message.payload).__name__}"
             )
+
+    # ------------------------------------------------------------------
+    # User commands (console)
+    # ------------------------------------------------------------------
+
+    def _on_user_command(self, message: Message) -> None:
+        """Handle a console command from the user.
+
+        Payload is a string — the name or id of a UI element to find and click.
+        """
+        if self._matcher is None or self._emulator is None:
+            logger.warning("[Cmd] Cannot execute — subsystems not ready")
+            return
+
+        target = message.payload
+        if not target or not isinstance(target, str):
+            return
+
+        target = target.strip()
+        logger.info(f"[Cmd] Looking for '{target}'...")
+
+        # 1. Look up in the UI element database.
+        record = None
+        if self._ui_element_db is not None:
+            record = self._ui_element_db.get(target)
+            if record is None:
+                # Try to find by name (case-insensitive).
+                for el in self._ui_element_db.list_all():
+                    if el.name.lower() == target.lower():
+                        record = el
+                        break
+            if record is None:
+                # Try to find by id (transliterated from Russian).
+                for el in self._ui_element_db.list_all():
+                    if el.id.lower() == target.lower():
+                        record = el
+                        break
+
+        if record is None:
+            logger.warning(
+                f"[Cmd] Element '{target}' not found in database. "
+                f"Available: {self._db_names()}"
+            )
+            return
+
+        logger.info(
+            f"[Cmd] Found '{record.name}' (id={record.id}) — searching on screen..."
+        )
+
+        # 2. Capture a fresh screenshot.
+        try:
+            screenshot = self._capturer.capture()
+        except Exception:
+            logger.exception("[Cmd] Failed to capture screenshot")
+            return
+
+        # 3. Match the template.
+        match = self._matcher.find(screenshot, record.id)
+        if match is None:
+            logger.warning(
+                f"[Cmd] Template '{record.id}' not found on screen. "
+                f"Confidence threshold: {self._matcher._confidence}"
+            )
+            return
+
+        # 4. Convert match coords to screen coords and click.
+        region = self._capturer.window_region
+        if region:
+            screen_x = region["left"] + match.center[0]
+            screen_y = region["top"] + match.center[1]
+        else:
+            screen_x, screen_y = match.center
+
+        logger.info(
+            f"[Cmd] Clicking '{record.name}' at screen ({screen_x}, {screen_y}) "
+            f"(confidence: {match.confidence:.2f})"
+        )
+
+        try:
+            self._emulator.click(screen_x, screen_y)
+        except Exception:
+            logger.exception("[Cmd] Click failed")
+
+    def _db_names(self) -> str:
+        """Return a comma-separated list of DB element names for hints."""
+        if self._ui_element_db is None:
+            return "(no database)"
+        names = [el.name for el in self._ui_element_db.list_all()]
+        return ", ".join(names[:10]) + ("..." if len(names) > 10 else "")
+
+    # ------------------------------------------------------------------
+    # Action handling
+    # ------------------------------------------------------------------
 
     def _drain_actions(self) -> None:
         """Execute all queued actions."""
