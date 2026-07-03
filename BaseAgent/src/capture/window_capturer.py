@@ -79,6 +79,10 @@ class WindowCapturer:
     def capture(self) -> np.ndarray:
         """Capture the current game window as a BGR numpy array (OpenCV-ready).
 
+        Tries ``PrintWindow`` first (captures even when the window is behind
+        other windows). Falls back to MSS screen capture if PrintWindow
+        returns a blank frame (common with DirectX games).
+
         Returns:
             Screenshot as a ``numpy.ndarray`` in H×W×C (BGR) format.
 
@@ -90,19 +94,127 @@ class WindowCapturer:
 
         self._throttle()
 
+        # 1. Try PrintWindow (works when the game is behind other windows).
+        if self._window_hwnd is not None:
+            frame = self._capture_via_printwindow()
+            if frame is not None and not self._is_blank_frame(frame):
+                return frame
+            if frame is not None:
+                logger.debug("PrintWindow returned a blank frame — falling back to MSS")
+
+        # 2. Fallback: MSS screen capture (requires window to be visible).
+        return self._capture_via_mss()
+
+    def _capture_via_printwindow(self) -> Optional["np.ndarray"]:
+        """Capture the game window content via ``PrintWindow``.
+
+        Works even when the window is minimised or behind other windows.
+        Returns ``None`` if the call fails, or a blank frame if the game
+        renders via DirectX (which PrintWindow cannot capture).
+        """
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.windll.user32
+            gdi32 = ctypes.windll.gdi32
+
+            hwnd = self._window_hwnd
+            region = self._window_region
+            width = region["width"]
+            height = region["height"]
+
+            # Get the window DC.
+            hdc_window = user32.GetDC(hwnd)
+            if not hdc_window:
+                logger.debug("PrintWindow: GetDC failed")
+                return None
+
+            # Create a compatible DC and bitmap.
+            hdc_mem = gdi32.CreateCompatibleDC(hdc_window)
+            hbitmap = gdi32.CreateCompatibleBitmap(hdc_window, width, height)
+            if not hdc_mem or not hbitmap:
+                user32.ReleaseDC(hwnd, hdc_window)
+                logger.debug("PrintWindow: CreateCompatibleDC/Bitmap failed")
+                return None
+
+            old_bmp = gdi32.SelectObject(hdc_mem, hbitmap)
+
+            # PrintWindow — PW_RENDERFULLCONTENT = 2 (requires Windows 8.1+).
+            PW_RENDERFULLCONTENT = 0x00000002
+            result = user32.PrintWindow(hwnd, hdc_mem, PW_RENDERFULLCONTENT)
+
+            if result == 0:
+                # Try without the flag (older Windows / fallback).
+                result = user32.PrintWindow(hwnd, hdc_mem, 0)
+
+            frame = None
+            if result != 0:
+                # Convert HBITMAP → numpy array.
+                import numpy as np
+                bmpinfo = ctypes.create_string_buffer(44)
+                gdi32.GetDIBits(
+                    hdc_mem, hbitmap, 0, height, None,
+                    ctypes.cast(bmpinfo, ctypes.POINTER(wintypes.BITMAPINFO)),
+                    0,  # DIB_RGB_COLORS
+                )
+
+                buf = ctypes.create_string_buffer(width * height * 4)
+                gdi32.GetDIBits(
+                    hdc_mem, hbitmap, 0, height, buf,
+                    ctypes.cast(bmpinfo, ctypes.POINTER(wintypes.BITMAPINFO)),
+                    0,
+                )
+                # BGRA → BGR (drop alpha).
+                raw = np.frombuffer(buf, dtype=np.uint8).reshape(height, width, 4)
+                frame = raw[:, :, :3].copy()
+
+            # Cleanup.
+            gdi32.SelectObject(hdc_mem, old_bmp)
+            gdi32.DeleteObject(hbitmap)
+            gdi32.DeleteDC(hdc_mem)
+            user32.ReleaseDC(hwnd, hdc_window)
+
+            if frame is not None:
+                logger.debug(
+                    f"PrintWindow captured {width}x{height} "
+                    f"(mean brightness: {frame.mean():.0f})"
+                )
+            return frame
+        except Exception:
+            logger.debug("PrintWindow capture failed", exc_info=True)
+            return None
+
+    def _capture_via_mss(self) -> "np.ndarray":
+        """Fallback: capture via MSS (requires window to be on-screen)."""
         try:
             import mss
+            import numpy as np
 
             if self._sct is None:
                 self._sct = mss.mss()
 
-            sct = self._sct
-            frame = np.array(sct.grab(self._window_region))
-            # MSS returns BGRA; drop the alpha channel for OpenCV.
-            return frame[:, :, :3]
+            frame = np.array(self._sct.grab(self._window_region))
+            return frame[:, :, :3]  # BGRA → BGR
         except Exception as exc:
             logger.error(f"Screen capture failed: {exc}")
             raise CaptureError(f"Failed to capture screen: {exc}") from exc
+
+    @staticmethod
+    def _is_blank_frame(frame: "np.ndarray") -> bool:
+        """Heuristic: detect if PrintWindow returned a blank/black frame.
+
+        A completely black frame (mean < 5) or a uniform-color frame
+        (std < 3) is treated as blank — PrintWindow cannot capture
+        DirectX content.
+        """
+        import numpy as np
+        mean = float(frame.mean())
+        if mean < 5.0:
+            return True  # Almost entirely black.
+        if float(frame.std()) < 3.0:
+            return True  # Single solid color.
+        return False
 
     def is_available(self) -> bool:
         """Check whether MSS + the game window are available."""
