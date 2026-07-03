@@ -233,10 +233,11 @@ class ParentAgent(BaseAgent):
             f"[Cmd] Found '{record.name}' (id={record.id}) — searching on screen..."
         )
 
-        # 2. Force game window on top for a split-second, capture, then restore.
+        # 2. Capture via the standard pipeline (tries PrintWindow first,
+        #    falls back to MSS — which needs the window on top).
         self._capturer.force_on_top()
         try:
-            screenshot = self._capturer._capture_via_mss()
+            screenshot = self._capturer.capture()
         except Exception:
             screenshot = None
         self._capturer.restore_z_order()
