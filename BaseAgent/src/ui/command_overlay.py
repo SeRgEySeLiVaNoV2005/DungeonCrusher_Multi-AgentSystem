@@ -349,8 +349,18 @@ class CommandOverlay:
     # ------------------------------------------------------------------
 
     def _send_command(self, text: str) -> None:
-        """Publish a USER_COMMAND message."""
+        """Publish a USER_COMMAND or special trigger message."""
         from ..communication.message_bus import Message, MessageType
+
+        # Special command: force-trigger the leveling agent.
+        if text.strip().lower() == "levelup":
+            self._bus.publish(Message(
+                type=MessageType.SYSTEM_TRIGGER_LEVELING,
+                source="overlay",
+            ))
+            self._flash_label("LEVELING TRIGGERED", "#00ff00")
+            logger.info("[Overlay] Leveling trigger sent")
+            return
 
         self._bus.publish(Message(
             type=MessageType.USER_COMMAND,

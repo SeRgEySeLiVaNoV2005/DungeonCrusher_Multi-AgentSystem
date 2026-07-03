@@ -400,8 +400,9 @@ class TestScanningAndLeveling:
         assert agent.leveling_state == LevelingState.LEVELING
 
     def test_level_up_increments_counter(self, agent, matcher):
-        """Each level-up increments total_levels."""
+        """Each level-up increments total_levels (pass 2)."""
         self._force_to_scanning(agent, matcher)
+        agent._pass = 2  # Level pass — only red buttons.
 
         from src.vision.template_matcher import MatchResult
 

@@ -45,20 +45,36 @@ class TemplateMatcher:
     Each file name (without extension) becomes the match ``name``.
 
     Uses OpenCV ``TM_CCOEFF_NORMED`` which is robust to brightness changes.
+
+    **Multi-scale matching** (enabled by default) tries each template at
+    several scales (e.g. 0.92× – 1.08×) and picks the best match.  This
+    makes the system resilient to minor resolution / DPI changes across
+    sessions and reboots.
     """
+
+    # Default scale range for multi-scale matching.
+    DEFAULT_SCALES: tuple = (1.0, 0.94, 1.06)
 
     def __init__(
         self,
         templates_dir: str = "resources/templates",
         confidence: float = 0.8,
+        multi_scale: bool = True,
+        scales: Optional[tuple] = None,
     ) -> None:
         """
         Args:
             templates_dir: Directory containing template ``.png`` files.
             confidence: Minimum confidence threshold (0.0 – 1.0).
+            multi_scale: If True, try templates at multiple scales
+                         to handle minor rendering differences.
+            scales: Tuple of scale factors (e.g. ``(0.9, 1.0, 1.1)``).
+                    If omitted, uses :attr:`DEFAULT_SCALES`.
         """
         self._templates_dir = Path(templates_dir)
         self._confidence = confidence
+        self._multi_scale = multi_scale
+        self._scales = tuple(scales) if scales else self.DEFAULT_SCALES
         self._templates: dict[str, np.ndarray] = {}  # name → BGR array
         self._loaded: bool = False
 
@@ -96,6 +112,9 @@ class TemplateMatcher:
     def find_all(self, screenshot: np.ndarray) -> List[MatchResult]:
         """Find *all* templates in a screenshot.
 
+        When ``multi_scale`` is enabled, each template is tried at multiple
+        scales and only the best match per template is kept.
+
         Args:
             screenshot: BGR image as a numpy array (H×W×C).
 
@@ -124,35 +143,33 @@ class TemplateMatcher:
                 logger.debug(f"Template '{name}' is larger than screenshot; skipping")
                 continue
 
-            result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
-
-            # Find all matches above threshold.
-            locations = np.where(result >= self._confidence)
-            scores = result[locations]
-
-            # Non-max suppression: group nearby matches.
-            # zip produces (col, row, score) triples — unpack as (x, y, score).
-            used = set()
-            for x, y, score in sorted(
-                zip(locations[1], locations[0], scores),
-                key=lambda t: t[2],
-                reverse=True,
-            ):
-                # Skip if too close to an already-reported match.
-                key = (y // th, x // tw)
-                if key in used:
-                    continue
-                used.add(key)
-
-                results.append(
-                    MatchResult(
-                        name=name,
-                        x=x + tw // 2,
-                        y=y + th // 2,
-                        confidence=float(score),
-                        bounds=(x, y, tw, th),
+            if self._multi_scale:
+                best = self._match_multi_scale(screenshot, template, name, cv2)
+                if best is not None:
+                    results.append(best)
+            else:
+                result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
+                locations = np.where(result >= self._confidence)
+                scores = result[locations]
+                used = set()
+                for x, y, score in sorted(
+                    zip(locations[1], locations[0], scores),
+                    key=lambda t: t[2],
+                    reverse=True,
+                ):
+                    key = (y // th, x // tw)
+                    if key in used:
+                        continue
+                    used.add(key)
+                    results.append(
+                        MatchResult(
+                            name=name,
+                            x=x + tw // 2,
+                            y=y + th // 2,
+                            confidence=float(score),
+                            bounds=(x, y, tw, th),
+                        )
                     )
-                )
 
         results.sort(key=lambda r: r.confidence, reverse=True)
         return results
@@ -164,8 +181,10 @@ class TemplateMatcher:
     def find_one(self, screenshot: np.ndarray, template_name: str) -> Optional[MatchResult]:
         """Fast lookup — match only *one* named template against the screenshot.
 
-        Much faster than :meth:`find_all` when you know which template you
-        are looking for (avoids iterating all 14+ templates).
+        When ``multi_scale`` is enabled (the default), the template is tried
+        at several scales (e.g. 0.90× – 1.10×) and the **best** match across
+        all scales is returned.  This makes matching resilient to minor
+        resolution / DPI differences between sessions.
 
         Args:
             screenshot: BGR image as a numpy array (H×W×C).
@@ -195,9 +214,21 @@ class TemplateMatcher:
             logger.debug(f"Template '{template_name}' is larger than screenshot; skipping")
             return None
 
-        result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
+        if self._multi_scale:
+            return self._match_multi_scale(screenshot, template, template_name, cv2)
+        else:
+            return self._match_single(screenshot, template, template_name, cv2)
 
-        # Find the single best match.
+    def _match_single(
+        self,
+        screenshot: np.ndarray,
+        template: np.ndarray,
+        name: str,
+        cv2,
+    ) -> Optional[MatchResult]:
+        """Match a single template at its native scale."""
+        th, tw = template.shape[:2]
+        result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
         if max_val < self._confidence:
@@ -205,12 +236,61 @@ class TemplateMatcher:
 
         x, y = max_loc
         return MatchResult(
-            name=template_name,
+            name=name,
             x=x + tw // 2,
             y=y + th // 2,
             confidence=float(max_val),
             bounds=(x, y, tw, th),
         )
+
+    def _match_multi_scale(
+        self,
+        screenshot: np.ndarray,
+        template: np.ndarray,
+        name: str,
+        cv2,
+    ) -> Optional[MatchResult]:
+        """Try the template at each scale; return the best match.
+
+        Starts at 1.0× and exits early if the match is strong enough,
+        avoiding unnecessary resize+match operations.
+        """
+        th, tw = template.shape[:2]
+        sh, sw = screenshot.shape[:2]
+
+        best: Optional[MatchResult] = None
+
+        for scale in self._scales:
+            if scale == 1.0:
+                # Native scale — no resize needed.
+                new_w, new_h = tw, th
+                search_img = template
+            else:
+                new_w = max(4, int(tw * scale))
+                new_h = max(4, int(th * scale))
+                if new_h > sh or new_w > sw:
+                    continue
+                search_img = cv2.resize(template, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+            result = cv2.matchTemplate(screenshot, search_img, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, max_loc = cv2.minMaxLoc(result)
+
+            if max_val >= self._confidence:
+                x, y = max_loc
+                candidate = MatchResult(
+                    name=name,
+                    x=x + new_w // 2,
+                    y=y + new_h // 2,
+                    confidence=float(max_val),
+                    bounds=(x, y, new_w, new_h),
+                )
+                if best is None or candidate.confidence > best.confidence:
+                    best = candidate
+                # Early exit: native scale matched well — skip other scales.
+                if scale == 1.0 and max_val >= self._confidence + 0.05:
+                    return best
+
+        return best
 
     # ------------------------------------------------------------------
     # Runtime template management

@@ -163,8 +163,10 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         self._navigate_countdown: int = 0
         self._busy_agents: Set[str] = set()
         self._current_level_button: Optional[MatchResult] = None
+        self._pass: int = 1  # 1 = hire pass, 2 = level pass
 
         # Stats.
+        self._total_hires: int = 0
         self._total_levels: int = 0
 
         # State machine.
@@ -184,6 +186,10 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         self.bus.add_subscriber(
             self._on_agent_status, MessageType.AGENT_STATUS
         )
+        # Manual trigger from console (``levelup`` command).
+        self.bus.add_subscriber(
+            self._on_force_trigger, MessageType.SYSTEM_TRIGGER_LEVELING
+        )
 
         logger.info(
             f"LevelingAgent '{self.name}' ready. "
@@ -199,9 +205,13 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         self.bus.remove_subscriber(
             self._on_agent_status, MessageType.AGENT_STATUS
         )
+        self.bus.remove_subscriber(
+            self._on_force_trigger, MessageType.SYSTEM_TRIGGER_LEVELING
+        )
         logger.info(
             f"LevelingAgent '{self.name}' stats — "
-            f"heroes leveled: {self._total_levels}"
+            f"hired: {self._total_hires}, "
+            f"leveled: {self._total_levels}"
         )
         super().on_stop()
 
@@ -239,6 +249,11 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
             self._busy_agents.add(domain)
         else:
             self._busy_agents.discard(domain)
+
+    def _on_force_trigger(self, message: Message) -> None:
+        """Manual trigger from console — force NAVIGATING."""
+        logger.info("[Leveling] Manually triggered via console")
+        self._fsm.force(LevelingState.NAVIGATING.value)
 
     # ------------------------------------------------------------------
     # FSM setup
@@ -346,45 +361,62 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         if self._current_screenshot is None:
             return False
         match = self._matcher.find_one(self._current_screenshot, "geroi")
-        return match is not None
+        if match is not None:
+            logger.info(
+                f"[Leveling] geroi tab FOUND at ({match.center[0]}, {match.center[1]}) "
+                f"confidence={match.confidence:.2f}"
+            )
+            return True
+        return False
 
     def _guard_navigate_timeout(self) -> bool:
         """True if we've been navigating too long without finding the tab."""
         return self._navigate_countdown <= 0
 
     def _guard_red_button_found(self) -> bool:
-        """True if a red (or purple/hire) level-up button is visible.
+        """True if a clickable button is visible on the current pass.
 
-        Checks both the red template (level-up available) and the hire
-        template (hero can be hired — clicking it turns the button red).
+        Pass 1 (hire): only looks for hire/purple buttons.
+        Pass 2 (level): only looks for red level-up buttons.
 
-        Caches the match result in ``_current_level_button`` so the
-        LEVELING state handler can use its coordinates.
+        Caches the match result in ``_current_level_button``.
         """
         if self._current_screenshot is None:
             return False
 
-        # Try red button first (level-up).
-        match = self._matcher.find_one(
-            self._current_screenshot, self._cfg.red_template
-        )
+        if self._pass == 1:
+            # Hire pass — only hire buttons.
+            match = self._matcher.find_one(
+                self._current_screenshot, self._cfg.hire_template
+            )
+        else:
+            # Level pass — only red buttons.
+            match = self._matcher.find_one(
+                self._current_screenshot, self._cfg.red_template
+            )
+
         if match is not None:
             self._current_level_button = match
             return True
-
-        # Try purple/hire button (functionally identical — click to hire).
-        match = self._matcher.find_one(
-            self._current_screenshot, self._cfg.hire_template
-        )
-        if match is not None:
-            self._current_level_button = match
-            return True
-
         return False
 
     def _guard_scrolling_done(self) -> bool:
-        """True when we've scrolled enough to cover the whole hero list."""
-        return self._scroll_count >= self._cfg.max_scrolls
+        """True when both passes have exhausted the hero list.
+
+        Pass 1 (hire) → switches to pass 2 (level) and resets scroll.
+        Pass 2 (level) → transitions to DONE.
+        """
+        if self._scroll_count < self._cfg.max_scrolls:
+            return False
+        if self._pass == 1:
+            self._pass = 2
+            self._scroll_count = 0
+            logger.info(
+                f"[Leveling] Hire pass complete ({self._total_hires} hired). "
+                f"Starting level pass..."
+            )
+            return False
+        return True
 
     def _guard_leveling_done(self) -> bool:
         """True once the post-level-up wait has elapsed."""
@@ -413,6 +445,7 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         """Click the Heroes tab via template matching."""
         self._navigate_countdown = self._cfg.navigate_check_frames
         self._scroll_count = 0
+        self._pass = 1  # Start with hire pass.
 
         if self._current_screenshot is not None:
             match = self._matcher.find_one(self._current_screenshot, "geroi")
@@ -458,14 +491,21 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
     # ------------------------------------------------------------------
 
     def _on_leveling_enter(self) -> None:
-        """Click the red level-up button that was found."""
+        """Click the button that was found (hire or level-up)."""
         button = getattr(self, "_current_level_button", None)
         if button is not None:
-            self._total_levels += 1
-            logger.info(
-                f"[Leveling] #{self._total_levels} — clicking level-up "
-                f"at ({button.center[0]}, {button.center[1]})"
-            )
+            if self._pass == 1:
+                self._total_hires += 1
+                logger.info(
+                    f"[Leveling] Hire #{self._total_hires} "
+                    f"at ({button.center[0]}, {button.center[1]})"
+                )
+            else:
+                self._total_levels += 1
+                logger.info(
+                    f"[Leveling] Level-up #{self._total_levels} "
+                    f"at ({button.center[0]}, {button.center[1]})"
+                )
             self.request_action(
                 ClickAction(button.center[0], button.center[1]),
                 WaitAction(self._cfg.level_up_wait),
@@ -473,7 +513,7 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
             self._current_level_button = None
 
         # Heroes that reach max level move to the top of the list.
-        # Reset scroll position so we re-scan from the top.
+        # Reset scroll position.
         self._scroll_count = 0
         self._scan_countdown = self._cfg.scan_interval_frames
 
@@ -491,7 +531,8 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
             payload={"domain": "leveling", "working": False, "state": "done"},
         )
         logger.info(
-            f"[Leveling] Done. Leveled {self._total_levels} hero(es) this session."
+            f"[Leveling] Done. Hired {self._total_hires}, "
+            f"leveled {self._total_levels} hero(es) this session."
         )
 
     def _on_done_update(self) -> None:

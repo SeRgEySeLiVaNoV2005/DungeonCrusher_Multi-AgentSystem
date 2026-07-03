@@ -112,10 +112,10 @@ class AutomaticLevelingConfig:
     red_template: str = "prokachka"
     """Template name for the red (clickable) level-up button."""
 
-    gray_template: str = "prokachka_gray"
+    gray_template: str = "seraya_knopka"
     """Template name for the gray (unavailable) level-up button."""
 
-    hire_template: str = "HiringHero"
+    hire_template: str = "nanyat"
     """Template name for the purple hire button (functionally = red)."""
 
 
@@ -255,8 +255,8 @@ def load_config(path: Optional[str] = None) -> Settings:
             navigate_check_frames=leveling_raw.get("navigate_check_frames", 15),
             max_scrolls=leveling_raw.get("max_scrolls", 30),
             red_template=leveling_raw.get("red_template", "prokachka"),
-            gray_template=leveling_raw.get("gray_template", "prokachka_gray"),
-            hire_template=leveling_raw.get("hire_template", "HiringHero"),
+            gray_template=leveling_raw.get("gray_template", "seraya_knopka"),
+            hire_template=leveling_raw.get("hire_template", "nanyat"),
         ),
         logging=LoggingConfig(
             level=logging_raw.get("level", "INFO"),

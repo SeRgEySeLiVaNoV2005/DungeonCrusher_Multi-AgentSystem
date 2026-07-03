@@ -68,13 +68,13 @@ logging:
 
 # Automatic Leveling Agent
 automatic_leveling:
-  idle_timeout_seconds: 60
-  scroll_clicks: 3
-  scroll_delay: 0.3
-  scan_interval_frames: 3
-  level_up_wait: 0.5
+  idle_timeout_seconds: 10
+  scroll_clicks: 6
+  scroll_delay: 0.1
+  scan_interval_frames: 1
+  level_up_wait: 0.1
   navigate_check_frames: 15
   max_scrolls: 30
   red_template: "prokachka"
-  gray_template: "prokachka_gray"
-  hire_template: "HiringHero"
+  gray_template: "seraya_knopka"
+  hire_template: "nanyat"

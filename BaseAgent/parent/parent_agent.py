@@ -402,20 +402,41 @@ class ParentAgent(BaseAgent):
     # ------------------------------------------------------------------
 
     def _drain_actions(self) -> None:
-        """Execute all queued actions."""
+        """Execute all queued actions, converting window-relative coordinates
+        to absolute screen coordinates."""
         if not self._pending_actions or self._emulator is None:
             return
 
         actions = self._pending_actions
         self._pending_actions = []
 
+        region = self._capturer.window_region if self._capturer else None
+
         for action in actions:
             try:
                 if isinstance(action, list):
-                    # Child sent multiple actions — execute as a sequence.
-                    self._emulator.execute(*action)
+                    # Child sent multiple actions — convert each.
+                    converted = [self._to_screen_coords(a, region) for a in action]
+                    self._emulator.execute(*converted)
                 else:
                     # Single Action object.
-                    self._emulator.execute(action)
+                    converted = self._to_screen_coords(action, region)
+                    self._emulator.execute(converted)
             except Exception:
                 logger.exception("Failed to execute action")
+
+    @staticmethod
+    def _to_screen_coords(
+        action: Action, region: Optional[dict]
+    ) -> Action:
+        """Convert window-relative ClickAction coordinates to absolute screen."""
+        if region is None:
+            return action
+        if isinstance(action, ClickAction):
+            return ClickAction(
+                x=region["left"] + action.x,
+                y=region["top"] + action.y,
+                button=action.button,
+                clicks=action.clicks,
+            )
+        return action

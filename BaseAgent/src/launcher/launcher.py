@@ -285,6 +285,14 @@ class SystemLauncher:
                     self._print_db_list()
                     continue
 
+                if cmd.lower() == "levelup":
+                    from src.communication.message_bus import Message, MessageType
+                    self._bus.publish(Message(
+                        type=MessageType.SYSTEM_TRIGGER_LEVELING,
+                        source="console",
+                    ))
+                    continue
+
                 # Publish as a user command — ParentAgent handles it.
                 from src.communication.message_bus import Message, MessageType
                 self._bus.publish(Message(

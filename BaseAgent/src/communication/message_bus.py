@@ -37,6 +37,7 @@ class MessageType(Enum):
     AGENT_DECISION = auto()     # A child agent made a decision
     AGENT_ACTION_REQUEST = auto()  # Agent wants the parent to execute an action
     AGENT_STATUS = auto()         # Agent working/idle status heartbeat
+    SYSTEM_TRIGGER_LEVELING = auto()  # Force-trigger the leveling agent
 
     # --- Game state ---
     STATE_UPDATED = auto()      # Game state changed
