@@ -131,8 +131,9 @@ class TemplateMatcher:
             scores = result[locations]
 
             # Non-max suppression: group nearby matches.
+            # zip produces (col, row, score) triples — unpack as (x, y, score).
             used = set()
-            for _, (y, x, score) in sorted(
+            for x, y, score in sorted(
                 zip(locations[1], locations[0], scores),
                 key=lambda t: t[2],
                 reverse=True,
