@@ -29,7 +29,7 @@ input:
 # Vision settings
 vision:
   # Template matching confidence threshold (0.0 - 1.0)
-  match_confidence: 0.8
+  match_confidence: 0.6
   # OCR language
   ocr_lang: "eng"
 

@@ -263,16 +263,26 @@ class ParentAgent(BaseAgent):
             self._publish_result(False, target)
             return
 
-        # ── 2. Fresh MSS capture (faster than waiting for main-loop frame) ─
-        try:
-            screenshot = self._capturer._capture_via_mss()
-        except Exception:
-            logger.warning("[Cmd] Failed to capture screenshot")
-            self._publish_result(False, display_name)
-            return
+        # ── 2. Reuse latest frame (instant — at most 100 ms old) ────
+        screenshot = None
+        if self._tracker.current is not None:
+            screenshot = self._tracker.current.screenshot
+        if screenshot is None:
+            try:
+                screenshot = self._capturer._capture_via_mss()
+            except Exception:
+                logger.warning("[Cmd] Failed to capture screenshot")
+                self._publish_result(False, display_name)
+                return
 
-        # ── 3. Match template (single-template fast path) ───────────
-        match = self._matcher.find_one(screenshot, template_id)
+        # ── 3. Downscale 2× for faster template matching ─────────────
+        import cv2
+        h, w = screenshot.shape[:2]
+        small = cv2.resize(screenshot, (w // 2, h // 2), interpolation=cv2.INTER_AREA)
+        scale = 2
+
+        # ── 4. Match template (single-template fast path) ────────────
+        match = self._matcher.find_one(small, template_id)
         if match is None:
             logger.warning(
                 f"[Cmd] Template '{template_id}' not found on screen. "
@@ -281,15 +291,15 @@ class ParentAgent(BaseAgent):
             self._publish_result(False, display_name)
             return
 
-        # ── 4. Calculate screen coordinates ─────────────────────────
+        # ── 5. Calculate screen coordinates (scale back up) ──────────
         region = self._capturer.window_region
         if region:
-            screen_x = region["left"] + match.center[0]
-            screen_y = region["top"] + match.center[1]
+            screen_x = region["left"] + match.center[0] * scale
+            screen_y = region["top"] + match.center[1] * scale
         else:
-            screen_x, screen_y = match.center
+            screen_x, screen_y = match.center[0] * scale, match.center[1] * scale
 
-        # ── 5. CLICK (minimal delay) ────────────────────────────────
+        # ── 6. CLICK ─────────────────────────────────────────────────
         logger.info(
             f"[Cmd] CLICK '{display_name}' at screen ({screen_x}, {screen_y}), "
             f"confidence={match.confidence:.2f}"
@@ -302,9 +312,6 @@ class ParentAgent(BaseAgent):
         except Exception:
             logger.exception(f"[Cmd] Click failed at ({screen_x}, {screen_y})")
             self._publish_result(False, display_name)
-
-        # ── 6. Return focus to game (no sleep — game already has focus) ──
-        self._capturer.bring_to_front(wait=False)
 
     # ------------------------------------------------------------------
     # Command helpers

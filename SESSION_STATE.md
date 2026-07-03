@@ -8,7 +8,7 @@
 
 - **Локально:** `C:\Users\dog24\Desktop\Агенты_для_крушителей_подземелий\`
 - **GitHub:** `git@github.com:SeRgEySeLiVaNoV2005/DungeonCrusher_Multi-AgentSystem.git`
-- **Ветка:** `framework-base` (запушена)
+- **Ветка:** `framework-base` (запушена, 12 коммитов)
 
 ## Структура проекта (актуальная)
 
@@ -19,11 +19,11 @@
 ├── ThePurposeOfTheWholeProject.md
 ├── SESSION_STATE.md                     # ← этот файл
 └── BaseAgent/
-    ├── agents/                          # Игровые агенты (НОВОЕ)
+    ├── agents/                          # Игровые агенты
     │   ├── __init__.py
     │   └── combat/
     │       ├── __init__.py
-    │       └── combat_agent.py          # Первый боевой агент
+    │       └── combat_agent.py          # Боевой агент (отключен — нет шаблонов)
     ├── base/              # BaseAgent (ABC) + ChildAgent
     │   ├── __init__.py
     │   ├── base_agent.py
@@ -32,23 +32,23 @@
     ├── watcher/           # WatcherAgent — отладка
     ├── tooltip_reader/    # TooltipReaderAgent (CTRL+H OCR)
     ├── src/
-    │   ├── core/          # config, exceptions, logger, state_machine (НОВОЕ)
+    │   ├── core/          # config, exceptions, logger, state_machine
     │   ├── capture/       # window_capturer.py
     │   ├── input/         # emulator.py
     │   ├── vision/        # template_matcher.py, ocr.py
     │   ├── communication/ # message_bus.py
     │   ├── game_state/    # state.py
-    │   ├── ui/            # command_overlay.py (НОВОЕ)
+    │   ├── ui/            # command_overlay.py
     │   └── launcher/      # launcher.py (CLI)
     ├── config/settings.yaml
-    ├── tests/             # 79 тестов (16 core + 38 tooltip + 19 sm + 22 combat)
-    └── resources/templates/
+    ├── tests/             # 79 тестов (16 core + 22 tooltip + 19 sm + 22 combat)
+    └── resources/templates/  # 14 PNG-шаблонов UI-кнопок
 ```
 
-## Что сделано (хронология)
+## Хронология
 
 ### Этап 1: Инфраструктура (8 коммитов)
-- Screen capture (MSS + Win32), input emulation (pynput)
+- Screen capture (MSS + Win32 PrintWindow), input emulation (pynput)
 - Vision (OpenCV template matching + Tesseract OCR)
 - MessageBus (pub/sub), GameState + StateTracker
 - ParentAgent (главный цикл), ChildAgent (база), WatcherAgent
@@ -56,53 +56,73 @@
 
 ### Этап 2: TooltipReader (2 коммита)
 - CTRL+H хоткей, Win32 RegisterHotKey
-- Буфер обмена (Win+Shift+S), 9 стратегий OCR (3×3)
+- Буфер обмена (Win+Shift+S), 9 стратегий OCR (3 языка × 3 препроцесса)
 - Веб-интерфейс ревью (localhost:8765)
-- UIElementDB + PendingElementStore
+- UIElementDB + PendingElementStore (14 элементов в БД)
 
-### Этап 3: Боевой агент и интеграция (2 коммита — СЕГОДНЯ)
+### Этап 3: Боевой агент и интеграция (2 коммита)
 - **StateMachine** — легковесный FSM (guarded transitions, hooks, ANY-state)
-- **CombatAgent** — первый автономный игровой агент:
+- **CombatAgent** — первый автономный игровой агент
   - 4 состояния: IDLE → SCANNING → COMBAT → CLEANUP
   - 2 сканера: template matching + colour heuristic (HSV red detection)
   - Ротация способностей с кулдауном
-- **Интеграция:** UIElementDB → TemplateMatcher (рантайм-регистрация шаблонов)
-- **Лаунчер:** создаёт TemplateMatcher, передаёт WebReviewServer и CombatAgent
+  - Отключен в лаунчере — нет боевых шаблонов
+
+### Этап 4: Command Overlay (5 коммитов)
+- **CommandOverlay** — плавающее окно ввода поверх игры (tkinter)
+  - always-on-top, полупрозрачное (α=0.85), без рамки
+  - Ввод названия кнопки → Enter → поиск шаблона → клик
+  - Ctrl+Shift+J — фокус на поле ввода (⚠️ занят другим приложением)
+  - Русские алиасы: настройки→nastroyki, магазин→magazin и т.д.
+  - Обратная связь: ✓ зелёный / ✗ красный в лейбле
+- **ParentAgent._on_user_command()** — поиск и клик по шаблону
+  - 3 стратегии: UIElementDB → русские алиасы → имена шаблонов
+  - Публикация COMMAND_RESULT для оверлея
+
+### Этап 5: Оптимизация и отладка (СЕГОДНЯ)
+- **9410954** `perf: memory optimization — gc import, reduced history buffer`
+  - Добавлен `import gc`, StateTracker.max_history 300→10
+- **Снижен порог совпадения:** `match_confidence: 0.8→0.6`
+  - Проблема: после перезагрузки ноутбука часть шаблонов давала <0.8
+- **Ускорен CommandOverlay** (незакоммичено):
+  - Переиспользование последнего кадра из трекера (вместо свежего MSS)
+  - Даунскейл скриншота 2× перед template matching (4× быстрее)
+  - Убран лишний bring_to_front после клика
+  - Задержка: 700-1000мс → 150-250мс
 
 ## Коммиты (последние)
 
 ```
-23eeeef feat(launcher): integrate TemplateMatcher, CombatAgent, and UI element pipeline
-8e75bab feat(agents): add StateMachine and CombatAgent — first autonomous game agent
-af42598 feat(tooltip-reader): upgrade OCR pipeline and hotkey system
-d8b248a fix(config): add Russian and VK Play window search keywords
-8b802ab fix(capture,vision): filter ghost windows and dedupe template loading
+9410954 perf: memory optimization — gc import, reduced history buffer
+c0105a3 perf(cmd): 4x latency reduction — fresh MSS, skip find_all, no sleep on click
+9977536 fix(cmd): current is a @property, not a method — remove parentheses
+2b39862 perf(cmd): reuse latest frame, single-template match, skip debug save
+6e88a72 fix(cmd): remove slow window-hide cycle, return focus to game after click
+a73c76a feat(ui): add command overlay — floating input window for button clicks
 ```
 
 ## Статистика тестов
 
 - **79 тестов**, все проходят
 - 16 test_core, 19 test_state_machine, 22 test_combat_agent, 22 test_tooltip_reader
+- Пробелы: WindowCapturer (0), InputEmulator (0), TemplateMatcher (0), MessageBus (0), ParentAgent (0)
 
-### Этап 4: Command Overlay (1 коммит — СЕГОДНЯ)
-- **CommandOverlay** — плавающее окно ввода поверх игры (tkinter)
-  - always-on-top, полупрозрачное (α=0.85), без рамки
-  - Ввод названия кнопки → Enter → поиск шаблона → клик
-  - Ctrl+Shift+K — фокус на поле ввода (Win32 RegisterHotKey)
-  - Русские алиасы: настройки→nastroyki, магазин→magazin и т.д.
-  - Обратная связь: ✓ зелёный / ✗ красный в лейбле
-- **ParentAgent._on_user_command()** — теперь реально КЛИКАЕТ
-  - 3 стратегии поиска: UIElementDB → русские алиасы → имена шаблонов
-  - Публикация COMMAND_RESULT для оверлея
-- **Launcher** — оверлей на главном потоке, ParentAgent в daemon
+## Известные проблемы
+
+1. **Tesseract OCR не установлен** — системная зависимость, OCR не работает
+2. **CombatAgent отключен** — нет боевых шаблонов (enemy_health_bar, battle_banner и др.)
+3. **Ctrl+Shift+J занят** — хоткей оверлея не регистрируется, нужно кликать мышкой
+4. **ParentAgent._on_user_command** вызывает приватный метод `_capture_via_mss()` — надо исправить
+5. **Нет лимита на `_pending_actions`** — может расти бесконечно при спаме
 
 ## Что дальше
 
 1. **Установить Tesseract OCR** — системная зависимость (нужно разрешение)
-2. **Протестировать CommandOverlay** на реальной игре
-3. **Навигационный агент** (NavigationAgent) — перемещение по карте
-4. **Агент сбора ресурсов** (ResourceAgent) — сбор золота/душ
-5. **Обучение с учителем** (human-in-the-loop) — демонстрация действий
+2. **Создать боевые шаблоны** — enemy_health_bar, battle_banner, combat_ability_frame
+3. **Включить CombatAgent** — раскомментировать в лаунчере
+4. **NavigationAgent** — перемещение по карте
+5. **ResourceAgent** — сбор золота/душ
+6. **Тесты для инфраструктурных модулей** — хотя бы с моками
 
 ## Правила работы
 
