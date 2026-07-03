@@ -263,7 +263,7 @@ class ParentAgent(BaseAgent):
             self._publish_result(False, target)
             return
 
-        # ── 2. Reuse latest frame (instant — at most 100 ms old) ────
+        # ── 2. Get screenshot (reuse latest frame, or capture fresh) ──
         screenshot = None
         if self._tracker.current is not None:
             screenshot = self._tracker.current.screenshot
@@ -275,14 +275,8 @@ class ParentAgent(BaseAgent):
                 self._publish_result(False, display_name)
                 return
 
-        # ── 3. Downscale 2× for faster template matching ─────────────
-        import cv2
-        h, w = screenshot.shape[:2]
-        small = cv2.resize(screenshot, (w // 2, h // 2), interpolation=cv2.INTER_AREA)
-        scale = 2
-
-        # ── 4. Match template (single-template fast path) ────────────
-        match = self._matcher.find_one(small, template_id)
+        # ── 3. Match template (single-template fast path) ────────────
+        match = self._matcher.find_one(screenshot, template_id)
         if match is None:
             logger.warning(
                 f"[Cmd] Template '{template_id}' not found on screen. "
@@ -291,15 +285,15 @@ class ParentAgent(BaseAgent):
             self._publish_result(False, display_name)
             return
 
-        # ── 5. Calculate screen coordinates (scale back up) ──────────
+        # ── 4. Calculate screen coordinates ──────────────────────────
         region = self._capturer.window_region
         if region:
-            screen_x = region["left"] + match.center[0] * scale
-            screen_y = region["top"] + match.center[1] * scale
+            screen_x = region["left"] + match.center[0]
+            screen_y = region["top"] + match.center[1]
         else:
-            screen_x, screen_y = match.center[0] * scale, match.center[1] * scale
+            screen_x, screen_y = match.center
 
-        # ── 6. CLICK ─────────────────────────────────────────────────
+        # ── 5. CLICK ─────────────────────────────────────────────────
         logger.info(
             f"[Cmd] CLICK '{display_name}' at screen ({screen_x}, {screen_y}), "
             f"confidence={match.confidence:.2f}"
