@@ -484,7 +484,7 @@ class CombatAgent(ChildAgent):
         self._ability_index = 0
         # Set cooldown now so the very first tick doesn't fire instantly.
         self._last_ability_time = time.time()
-        logger.info("[CombatAgent] ⚔ COMBAT ENGAGED")
+        logger.info("[CombatAgent] >> COMBAT ENGAGED")
 
     def _on_combat_update(self) -> None:
         """Fight! Run scanners, use abilities if enemies are present."""

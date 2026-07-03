@@ -188,13 +188,11 @@ class ParentAgent(BaseAgent):
 
         for action in actions:
             try:
-                # Single action.
-                self._emulator.execute(action)
-            except TypeError:
-                # Sequence of actions.
-                try:
+                if isinstance(action, list):
+                    # Child sent multiple actions — execute as a sequence.
                     self._emulator.execute(*action)
-                except Exception:
-                    logger.exception("Failed to execute action sequence")
+                else:
+                    # Single Action object.
+                    self._emulator.execute(action)
             except Exception:
                 logger.exception("Failed to execute action")

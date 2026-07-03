@@ -112,6 +112,7 @@ _REVIEW_PAGE = r"""<!DOCTYPE html>
 <header>
   <h1>&#128736; UI Element Review</h1>
   <span class="count" id="counter">Loading...</span>
+  <button class="btn btn-save" onclick="fetchPending()" style="margin-left:16px;">&#8635; Refresh</button>
 </header>
 
 <div class="container" id="app">
@@ -284,7 +285,14 @@ document.addEventListener('input', function(e) {
 
 // ---- Init ----
 fetchPending();
-setInterval(fetchPending, 3000);  // Poll every 3 seconds.
+// Poll every 3 seconds, but skip when the user is editing a field.
+setInterval(function() {
+  var active = document.activeElement;
+  if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
+    return;  // User is typing — don't disrupt them.
+  }
+  fetchPending();
+}, 3000);
 </script>
 </body>
 </html>"""
