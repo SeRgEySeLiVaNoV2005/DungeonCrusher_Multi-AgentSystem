@@ -71,9 +71,9 @@ _REVIEW_PAGE = r"""<!DOCTYPE html>
   .card-header .time { font-size: 0.8rem; color: var(--text-dim); }
   .card-body { display: flex; gap: 16px; padding: 16px; }
   .card-body .preview { flex: 0 0 auto; }
-  .card-body .preview img { max-width: 320px; max-height: 120px;
+  .card-body .preview img { max-width: 400px; max-height: 200px;
                             border-radius: 4px; border: 1px solid rgba(255,255,255,0.1);
-                            image-rendering: pixelated; display: block; }
+                            image-rendering: auto; display: block; }
   .card-body .preview .dims { font-size: 0.7rem; color: var(--text-dim);
                               text-align: center; margin-top: 4px; }
   .card-body .form { flex: 1; display: flex; flex-direction: column; gap: 10px; }
@@ -169,31 +169,32 @@ function render(items) {
       <div class="card-body">
         <div class="preview">
           ${hasImage
-            ? `<img src="${imgSrc}" alt="captured region" id="img-${el.id}">`
+            ? `<img src="${imgSrc}" alt="captured region" id="img-${el.id}" title="${el.region_width}x${el.region_height}px">`
             : '<div style="width:320px;height:60px;background:#111;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#555;">No image</div>'}
           <div class="dims">${el.region_width}&times;${el.region_height}px
             &middot; pos (${el.window_x}, ${el.window_y})</div>
         </div>
         <div class="form">
           <div class="form-row">
-            <label>Name</label>
-            <input type="text" id="name-${el.id}" value="${esc(el.name || '')}"
-                   placeholder="Element name...">
+            <label>Raw OCR</label>
+            <span class="pos" style="color:var(--text);background:var(--input-bg);padding:6px 10px;border-radius:4px;flex:1;font-family:monospace;">${esc(el.raw_text || '(no text recognized)')}</span>
           </div>
           <div class="form-row">
-            <label>Text</label>
+            <label>Correct</label>
             <textarea id="text-${el.id}" rows="2"
-                      placeholder="Recognized text...">${esc(el.edited_text || el.raw_text || '')}</textarea>
+                      placeholder="Your corrected version of the text..."
+                      oninput="autoName('${el.id}')">${esc(el.edited_text || '')}</textarea>
+          </div>
+          <div class="form-row">
+            <label>Name</label>
+            <input type="text" id="name-${el.id}" value="${esc(el.name || '')}"
+                   placeholder="Auto-generated from correct text...">
           </div>
           <div class="form-row">
             <label>Tags</label>
             <input type="text" id="tags-${el.id}"
                    value="${esc((el.tags || []).join(', '))}"
                    placeholder="combat, resource, button...">
-          </div>
-          <div class="form-row">
-            <label></label>
-            <span class="pos">Raw OCR: "${esc(el.raw_text || '')}"</span>
           </div>
         </div>
       </div>
@@ -261,6 +262,25 @@ async function discard(id) {
     showToast('Failed to discard', 'error');
   }
 }
+
+function autoName(id) {
+  const textEl = document.getElementById('text-' + id);
+  const nameEl = document.getElementById('name-' + id);
+  if (textEl && nameEl) {
+    const textVal = textEl.value.trim();
+    // Only auto-fill if name hasn't been manually edited.
+    if (!nameEl.dataset.manual || nameEl.dataset.manual === '0') {
+      nameEl.value = textVal ? textVal.slice(0, 60) : '';
+      nameEl.dataset.manual = '0';
+    }
+  }
+}
+// Mark name as manually edited when user types in it.
+document.addEventListener('input', function(e) {
+  if (e.target.id && e.target.id.startsWith('name-')) {
+    e.target.dataset.manual = '1';
+  }
+});
 
 // ---- Init ----
 fetchPending();

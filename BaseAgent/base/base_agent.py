@@ -92,6 +92,15 @@ class BaseAgent(ABC):
         self._thread.start()
         logger.info(f"Agent '{self.name}' started")
 
+    def join(self, timeout: Optional[float] = None) -> None:
+        """Wait for the agent thread to finish.
+
+        Args:
+            timeout: Maximum seconds to wait (``None`` = wait forever).
+        """
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=timeout)
+
     def stop(self, timeout: float = 5.0) -> None:
         """Signal the agent to stop and wait for its thread.
 

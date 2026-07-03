@@ -402,7 +402,7 @@ class TestConfig:
         assert cfg.region_height == 90
         assert cfg.scale == 2.0
         assert cfg.invert is True
-        assert cfg.ocr_lang == "eng"
+        assert cfg.ocr_lang == "rus+eng"
 
     def test_web_review_config_defaults(self):
         """WebReviewConfig has sensible defaults."""

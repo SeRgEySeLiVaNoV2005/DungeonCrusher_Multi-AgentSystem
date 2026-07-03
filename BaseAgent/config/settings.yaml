@@ -48,7 +48,7 @@ tooltip_reader:
   # Reserved for future auto-hover mode
   hover_delay: 0.0
   # Tesseract language code (eng, rus, eng+rus)
-  ocr_lang: "eng"
+  ocr_lang: "rus+eng"
   # Upscale factor for OCR (1.0 = no scaling, 2.0 = double size)
   scale: 2.0
   # Invert colors for light-on-dark tooltips

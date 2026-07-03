@@ -71,7 +71,7 @@ class TooltipReaderConfig:
     hover_delay: float = 0.0
     """Not used in manual mode; reserved for future auto-hover."""
 
-    ocr_lang: str = "eng"
+    ocr_lang: str = "rus+eng"
     """Tesseract language code."""
 
     scale: float = 2.0

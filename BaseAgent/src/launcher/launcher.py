@@ -109,9 +109,12 @@ class SystemLauncher:
         for child in self._children:
             child.start()
 
-        # Start parent (synchronous — runs the main loop).
+        # Start parent (creates a daemon thread for the main loop).
+        self._parent.start()
+
+        # Block until the parent stops or the user interrupts.
         try:
-            self._parent.start()
+            self._parent.join()
         except KeyboardInterrupt:
             logger.info("Interrupted by user")
         finally:
