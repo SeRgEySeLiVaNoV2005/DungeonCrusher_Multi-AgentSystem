@@ -66,6 +66,7 @@ class SystemLauncher:
         self._pending_store: Any = None
         self._ui_element_db: Any = None
         self._web_server: Any = None
+        self._template_matcher: Any = None
 
     def bootstrap(self, dry_run: bool = False) -> None:
         """Create the parent agent and wire everything together.
@@ -148,7 +149,21 @@ class SystemLauncher:
     # ------------------------------------------------------------------
 
     def _setup_infrastructure(self) -> None:
-        """Create shared infrastructure: pending store and UI element DB."""
+        """Create shared infrastructure: template matcher, pending store, DB."""
+        # Template matcher — shared across all agents.
+        try:
+            from src.vision.template_matcher import TemplateMatcher
+
+            self._template_matcher = TemplateMatcher(
+                templates_dir=self._settings.vision.templates_dir,
+                confidence=self._settings.vision.match_confidence,
+            )
+            loaded = self._template_matcher.load_templates()
+            logger.info(f"Template matcher initialized ({loaded} templates loaded)")
+        except Exception:
+            logger.exception("Failed to initialize template matcher")
+
+        # Pending store + UI element database.
         try:
             from tooltip_reader.pending_store import PendingElementStore
             from tooltip_reader.ui_element_db import UIElementDB
@@ -172,6 +187,7 @@ class SystemLauncher:
             self._web_server = WebReviewServer(
                 store=self._pending_store,
                 db=self._ui_element_db,
+                matcher=self._template_matcher,
                 host=cfg.host,
                 port=cfg.port,
             )
@@ -199,6 +215,7 @@ class SystemLauncher:
     def _create_default_children(self) -> None:
         """Create default child agents on bootstrap."""
         self._create_tooltip_reader()
+        self._create_combat_agent()
 
     def _create_tooltip_reader(self) -> None:
         """Create the TooltipReaderAgent with config from settings."""
@@ -224,6 +241,27 @@ class SystemLauncher:
             self._children.append(agent)
         except Exception:
             logger.exception("Failed to create TooltipReaderAgent")
+
+    def _create_combat_agent(self) -> None:
+        """Create the CombatAgent if templates are available."""
+        if self._template_matcher is None:
+            logger.warning("No template matcher; skipping CombatAgent")
+            return
+
+        try:
+            from agents.combat import CombatAgent
+
+            agent = CombatAgent(
+                name="combat_01",
+                bus=self._bus,
+                matcher=self._template_matcher,
+                abilities=["1", "2", "3"],
+                ability_cooldown=1.5,
+            )
+            self._children.append(agent)
+            logger.info("CombatAgent created (will auto-detect combat via templates)")
+        except Exception:
+            logger.exception("Failed to create CombatAgent")
 
 
 # ---------------------------------------------------------------------------

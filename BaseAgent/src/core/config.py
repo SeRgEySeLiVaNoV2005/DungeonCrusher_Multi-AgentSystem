@@ -46,6 +46,9 @@ class InputConfig:
 class VisionConfig:
     """Settings for computer vision."""
 
+    templates_dir: str = "resources/templates"
+    """Directory containing template PNG images for TemplateMatcher."""
+
     match_confidence: float = 0.8
     ocr_lang: str = "eng"
 
@@ -198,6 +201,7 @@ def load_config(path: Optional[str] = None) -> Settings:
             double_click_interval=input_raw.get("double_click_interval", 0.3),
         ),
         vision=VisionConfig(
+            templates_dir=vision_raw.get("templates_dir", "resources/templates"),
             match_confidence=vision_raw.get("match_confidence", 0.8),
             ocr_lang=vision_raw.get("ocr_lang", "eng"),
         ),

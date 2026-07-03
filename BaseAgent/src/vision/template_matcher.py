@@ -163,3 +163,45 @@ class TemplateMatcher:
             if m.name == template_name:
                 return m
         return None
+
+    # ------------------------------------------------------------------
+    # Runtime template management
+    # ------------------------------------------------------------------
+
+    def add_template(self, name: str, image: np.ndarray) -> None:
+        """Register a template image at runtime (no disk write).
+
+        Use this when a new UI element is saved to the database — the
+        TemplateMatcher can use it immediately without a full reload.
+
+        Args:
+            name: Template name (used as the match ``name``).
+            image: BGR numpy array of the template.
+        """
+        if image is None or image.size == 0:
+            logger.warning(f"TemplateMatcher.add_template: empty image for '{name}'")
+            return
+        self._templates[name] = image
+        self._loaded = True
+        logger.info(
+            f"TemplateMatcher: added '{name}' ({image.shape[1]}x{image.shape[0]}px) — "
+            f"{len(self._templates)} total"
+        )
+
+    def remove_template(self, name: str) -> bool:
+        """Remove a template by name. Returns True if it existed."""
+        if name in self._templates:
+            del self._templates[name]
+            logger.info(f"TemplateMatcher: removed '{name}' — {len(self._templates)} remaining")
+            return True
+        return False
+
+    @property
+    def template_count(self) -> int:
+        """Number of loaded templates."""
+        return len(self._templates)
+
+    @property
+    def template_names(self) -> tuple:
+        """Tuple of all loaded template names."""
+        return tuple(self._templates.keys())

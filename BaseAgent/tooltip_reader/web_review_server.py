@@ -310,6 +310,9 @@ class _ReviewHandler(BaseHTTPRequestHandler):
     store: "PendingElementStore" = None  # type: ignore[assignment]
     # Reference to the UI element database (set by WebReviewServer).
     db = None  # type: ignore[assignment]
+    # Reference to the template matcher — if set, newly saved elements
+    # are registered at runtime without a full reload.
+    matcher = None  # type: ignore[assignment]
 
     def log_message(self, format, *args):  # noqa: A002
         """Suppress default HTTP request logging."""
@@ -409,6 +412,9 @@ class _ReviewHandler(BaseHTTPRequestHandler):
                         name=element.name,
                         tags=element.tags,
                     )
+                    # Also register the template with the matcher at runtime.
+                    if self.matcher is not None:
+                        self.matcher.add_template(record.id, element.image)
                     logger.info(
                         f"[WebReview] Element '{element.id}' saved as "
                         f"'{record.id}' to database"
@@ -478,11 +484,22 @@ class WebReviewServer:
         self,
         store: "PendingElementStore",
         db: "UIElementDB",
+        matcher=None,
         host: str = "127.0.0.1",
         port: int = 8765,
     ) -> None:
+        """
+        Args:
+            store: Shared pending-element store.
+            db: UI element database for persistence.
+            matcher: Optional :class:`TemplateMatcher` — if provided,
+                     newly saved elements are registered at runtime.
+            host: Bind address.
+            port: Bind port.
+        """
         self._store = store
         self._db = db
+        self._matcher = matcher
         self._host = host
         self._port = port
         self._httpd: Optional[HTTPServer] = None
@@ -494,9 +511,10 @@ class WebReviewServer:
 
     def start(self) -> None:
         """Start the HTTP server in a background daemon thread."""
-        # Inject store and db into the handler class.
+        # Inject dependencies into the handler class.
         _ReviewHandler.store = self._store
         _ReviewHandler.db = self._db
+        _ReviewHandler.matcher = self._matcher
 
         self._httpd = HTTPServer((self._host, self._port), _ReviewHandler)
 
