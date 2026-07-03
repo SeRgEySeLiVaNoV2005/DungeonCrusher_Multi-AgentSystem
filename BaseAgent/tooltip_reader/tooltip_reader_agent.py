@@ -1,14 +1,17 @@
 """TooltipReaderAgent — OCR debug agent triggered by CTRL+H hotkey.
 
 Captures the screen region around the mouse cursor, runs OCR,
-prints the recognized text to the console, and saves the element
-to the UI element database for future autonomous use.
+logs the result to the console, and places the element into the
+**pending review queue**. Use the web interface at
+``http://localhost:8765`` to review, edit, and save to the database.
 
 Usage (manual, during gameplay):
     1. Hover the mouse over a UI element (e.g., gold counter, button).
     2. Press CTRL+H.
     3. The agent logs the recognized text to the console.
-    4. The element is saved to the database with its template image.
+    4. Open http://localhost:8765 in a browser.
+    5. Review the element: correct the name, text, and tags.
+    6. Click "Save to DB" — the element is stored with its template image.
 """
 
 from __future__ import annotations
@@ -70,39 +73,36 @@ class TooltipReaderAgent(ChildAgent):
         self,
         name: str,
         bus: MessageBus,
+        pending_store: "PendingElementStore",
         domain: str = "debug",
         region_width: int = 320,
         region_height: int = 90,
         ocr_lang: str = "eng",
         scale: float = 2.0,
         invert: bool = True,
-        db_path: str = "resources/ui_elements_db.json",
     ) -> None:
         """
         Args:
             name: Unique agent name (e.g. ``'tooltip_reader'``).
             bus: Shared message bus.
+            pending_store: Shared store for elements awaiting user review.
             domain: Agent domain (default ``'debug'``).
             region_width: Width of the capture region around the cursor.
             region_height: Height of the capture region around the cursor.
             ocr_lang: Tesseract language code.
             scale: Scale factor to upscale the region before OCR (1.0 = no scaling).
             invert: If True, invert colors for light-on-dark game tooltips.
-            db_path: Path to the UI element database JSON file.
         """
         super().__init__(name, bus, domain)
         self._region_width = region_width
         self._region_height = region_height
         self._scale = scale
         self._invert = invert
+        self._pending_store = pending_store
 
         # OCR engine (lazy-init).
         self._ocr_engine: Optional[OCREngine] = None
         self._ocr_lang = ocr_lang
-
-        # Database (lazy-init).
-        self._db = None
-        self._db_path = db_path
 
         # State.
         self._state = ReaderState.IDLE
@@ -123,11 +123,6 @@ class TooltipReaderAgent(ChildAgent):
         # Lazy-init OCR engine.
         self._ocr_engine = OCREngine(lang=self._ocr_lang)
 
-        # Lazy-init database.
-        from tooltip_reader.ui_element_db import UIElementDB
-
-        self._db = UIElementDB(self._db_path)
-
         # Start the CTRL+H hotkey listener in a background thread.
         self._start_hotkey_listener()
 
@@ -140,10 +135,6 @@ class TooltipReaderAgent(ChildAgent):
         """Stop the hotkey listener and unsubscribe."""
         self._state = ReaderState.SHUTDOWN
         self._stop_hotkey_listener()
-
-        # Save database.
-        if self._db is not None:
-            self._db._save()  # noqa: SLF001 — final flush
 
         # Inherit ChildAgent's cleanup.
         super().on_stop()
@@ -238,7 +229,7 @@ class TooltipReaderAgent(ChildAgent):
         screenshot: np.ndarray,
         window_region: Optional[dict],
     ) -> None:
-        """Crop region around cursor, run OCR, log and save the result.
+        """Crop region around cursor, run OCR, log and send to review queue.
 
         Args:
             screenshot: BGR numpy array of the game window.
@@ -304,6 +295,7 @@ class TooltipReaderAgent(ChildAgent):
                 f"  Recognized text: \"{text}\"\n"
                 f"  Region: ({rel_x},{rel_y}) ± ({half_w},{half_h})px\n"
                 f"  Window pos: ({rel_x},{rel_y})\n"
+                f"  Review at http://localhost:8765\n"
                 f"{'─' * 55}"
             )
         else:
@@ -312,22 +304,27 @@ class TooltipReaderAgent(ChildAgent):
                 f"region may be empty or text is too stylized"
             )
 
-        # 7. Save to database (even if empty — user can edit later).
+        # 7. Add to pending review queue (not auto-saved).
+        window_x = rel_x - half_w
+        window_y = rel_y - half_h
+        region_w = x2 - x1
+        region_h = y2 - y1
+
         try:
-            self._db.add_element(
-                text=text or "(empty)",
-                region_image=region,
-                window_x=rel_x - half_w,
-                window_y=rel_y - half_h,
-                region_width=x2 - x1,
-                region_height=y2 - y1,
+            element = self._pending_store.add(
+                image=region,
+                raw_text=text or "",
+                window_x=window_x,
+                window_y=window_y,
+                region_width=region_w,
+                region_height=region_h,
+            )
+            logger.info(
+                f"[TooltipReader] Added to review queue (id={element.id}). "
+                f"Pending: {self._pending_store.count()}"
             )
         except Exception:
-            logger.exception("[TooltipReader] Failed to save element to database")
-
-        logger.info(
-            f"[TooltipReader] Database now has {self._db.count()} element(s)"
-        )
+            logger.exception("[TooltipReader] Failed to add element to pending store")
 
     # ------------------------------------------------------------------
     # Internals — image preprocessing

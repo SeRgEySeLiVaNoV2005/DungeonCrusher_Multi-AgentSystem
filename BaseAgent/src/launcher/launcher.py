@@ -12,7 +12,7 @@ import argparse
 import signal
 import sys
 import time
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from parent.parent_agent import ParentAgent
 from base.child_agent import ChildAgent
@@ -62,6 +62,11 @@ class SystemLauncher:
         self._parent: Optional[ParentAgent] = None
         self._children: List[ChildAgent] = []
 
+        # Shared infrastructure.
+        self._pending_store: Any = None
+        self._ui_element_db: Any = None
+        self._web_server: Any = None
+
     def bootstrap(self, dry_run: bool = False) -> None:
         """Create the parent agent and wire everything together.
 
@@ -75,6 +80,9 @@ class SystemLauncher:
         if dry_run:
             logger.info("DRY-RUN mode — no game connection")
 
+        # Shared infrastructure.
+        self._setup_infrastructure()
+
         # Create parent.
         self._parent = ParentAgent(
             name="parent",
@@ -82,7 +90,7 @@ class SystemLauncher:
             settings=self._settings,
         )
 
-        # Optionally create stub children.
+        # Create child agents.
         self._create_default_children()
 
         logger.info(
@@ -93,6 +101,9 @@ class SystemLauncher:
         """Start the parent agent (main loop). Blocks until interrupted."""
         if self._parent is None:
             raise DungeonCrusherError("Call bootstrap() before start()")
+
+        # Start the web review server first.
+        self._start_web_server()
 
         # Start children.
         for child in self._children:
@@ -124,15 +135,74 @@ class SystemLauncher:
             except Exception:
                 logger.exception("Error stopping parent agent")
 
+        # Stop web server.
+        self._stop_web_server()
+
         logger.info("All agents stopped. Goodbye!")
+
+    # ------------------------------------------------------------------
+    # Infrastructure
+    # ------------------------------------------------------------------
+
+    def _setup_infrastructure(self) -> None:
+        """Create shared infrastructure: pending store and UI element DB."""
+        try:
+            from tooltip_reader.pending_store import PendingElementStore
+            from tooltip_reader.ui_element_db import UIElementDB
+
+            self._pending_store = PendingElementStore()
+            self._ui_element_db = UIElementDB(
+                self._settings.web_review.db_path
+            )
+            logger.info("Infrastructure initialized (pending store + element DB)")
+        except Exception:
+            logger.exception("Failed to initialize infrastructure")
+
+    def _start_web_server(self) -> None:
+        """Launch the web review interface."""
+        if self._pending_store is None or self._ui_element_db is None:
+            return
+        try:
+            from tooltip_reader.web_review_server import WebReviewServer
+
+            cfg = self._settings.web_review
+            self._web_server = WebReviewServer(
+                store=self._pending_store,
+                db=self._ui_element_db,
+                host=cfg.host,
+                port=cfg.port,
+            )
+            self._web_server.start()
+        except OSError:
+            logger.warning(
+                f"Could not start web server on port {self._settings.web_review.port} "
+                f"— port may be in use"
+            )
+        except Exception:
+            logger.exception("Failed to start web review server")
+
+    def _stop_web_server(self) -> None:
+        """Shut down the web review server."""
+        if self._web_server is not None:
+            try:
+                self._web_server.stop()
+            except Exception:
+                pass
+
+    # ------------------------------------------------------------------
+    # Child agents
+    # ------------------------------------------------------------------
 
     def _create_default_children(self) -> None:
         """Create default child agents on bootstrap."""
-        # TooltipReaderAgent — CTRL+H to read text under cursor.
         self._create_tooltip_reader()
 
     def _create_tooltip_reader(self) -> None:
         """Create the TooltipReaderAgent with config from settings."""
+        if self._pending_store is None:
+            logger.warning("No pending store; skipping TooltipReaderAgent")
+            return
+
         cfg = self._settings.tooltip_reader
         try:
             from tooltip_reader.tooltip_reader_agent import TooltipReaderAgent
@@ -140,13 +210,13 @@ class SystemLauncher:
             agent = TooltipReaderAgent(
                 name="tooltip_reader",
                 bus=self._bus,
+                pending_store=self._pending_store,
                 domain="debug",
                 region_width=cfg.region_width,
                 region_height=cfg.region_height,
                 ocr_lang=cfg.ocr_lang,
                 scale=cfg.scale,
                 invert=cfg.invert,
-                db_path=cfg.db_path,
             )
             self._children.append(agent)
         except Exception:

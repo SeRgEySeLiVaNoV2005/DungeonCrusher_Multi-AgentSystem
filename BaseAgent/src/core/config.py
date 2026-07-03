@@ -77,6 +77,17 @@ class TooltipReaderConfig:
     invert: bool = True
     """Invert colors for light-on-dark game tooltips."""
 
+
+@dataclass
+class WebReviewConfig:
+    """Settings for the local web review interface."""
+
+    host: str = "127.0.0.1"
+    """Server bind address."""
+
+    port: int = 8765
+    """Server port."""
+
     db_path: str = "resources/ui_elements_db.json"
     """Path to the UI element database JSON file."""
 
@@ -100,6 +111,7 @@ class Settings:
     vision: VisionConfig = field(default_factory=VisionConfig)
     agents: AgentConfig = field(default_factory=AgentConfig)
     tooltip_reader: TooltipReaderConfig = field(default_factory=TooltipReaderConfig)
+    web_review: WebReviewConfig = field(default_factory=WebReviewConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
 
 
@@ -164,6 +176,7 @@ def load_config(path: Optional[str] = None) -> Settings:
     vision_raw = raw.get("vision", {})
     agents_raw = raw.get("agents", {})
     tooltip_raw = raw.get("tooltip_reader", {})
+    web_review_raw = raw.get("web_review", {})
     logging_raw = raw.get("logging", {})
 
     return Settings(
@@ -204,6 +217,10 @@ def load_config(path: Optional[str] = None) -> Settings:
             ocr_lang=tooltip_raw.get("ocr_lang", "eng"),
             scale=tooltip_raw.get("scale", 2.0),
             invert=tooltip_raw.get("invert", True),
-            db_path=tooltip_raw.get("db_path", "resources/ui_elements_db.json"),
+        ),
+        web_review=WebReviewConfig(
+            host=web_review_raw.get("host", "127.0.0.1"),
+            port=web_review_raw.get("port", 8765),
+            db_path=web_review_raw.get("db_path", "resources/ui_elements_db.json"),
         ),
     )

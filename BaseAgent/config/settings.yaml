@@ -50,7 +50,11 @@ tooltip_reader:
   scale: 2.0
   # Invert colors for light-on-dark tooltips
   invert: true
-  # Path to the UI element database JSON file
+
+# Web Review Interface (manual review before saving)
+web_review:
+  host: "127.0.0.1"
+  port: 8765
   db_path: "resources/ui_elements_db.json"
 
 # Logging
