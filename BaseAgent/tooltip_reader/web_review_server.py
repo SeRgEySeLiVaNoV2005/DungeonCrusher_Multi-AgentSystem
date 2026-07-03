@@ -285,14 +285,8 @@ document.addEventListener('input', function(e) {
 
 // ---- Init ----
 fetchPending();
-// Poll every 3 seconds, but skip when the user is editing a field.
-setInterval(function() {
-  var active = document.activeElement;
-  if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
-    return;  // User is typing — don't disrupt them.
-  }
-  fetchPending();
-}, 3000);
+// No auto-polling — use the Refresh button to see new elements.
+// This prevents the page from resetting fields while you edit.
 </script>
 </body>
 </html>"""
