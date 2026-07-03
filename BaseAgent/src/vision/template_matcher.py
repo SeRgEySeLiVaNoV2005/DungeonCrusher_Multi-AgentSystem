@@ -159,11 +159,58 @@ class TemplateMatcher:
 
     def find(self, screenshot: np.ndarray, template_name: str) -> Optional[MatchResult]:
         """Find a single template by name. Returns the best match or ``None``."""
-        matches = self.find_all(screenshot)
-        for m in matches:
-            if m.name == template_name:
-                return m
-        return None
+        return self.find_one(screenshot, template_name)
+
+    def find_one(self, screenshot: np.ndarray, template_name: str) -> Optional[MatchResult]:
+        """Fast lookup — match only *one* named template against the screenshot.
+
+        Much faster than :meth:`find_all` when you know which template you
+        are looking for (avoids iterating all 14+ templates).
+
+        Args:
+            screenshot: BGR image as a numpy array (H×W×C).
+            template_name: Name of the template to find.
+
+        Returns:
+            The best :class:`MatchResult` above the confidence threshold,
+            or ``None``.
+        """
+        try:
+            import cv2
+        except ImportError as exc:
+            raise VisionError(
+                "OpenCV is required for template matching. "
+                "Install: pip install opencv-python"
+            ) from exc
+
+        template = self._templates.get(template_name)
+        if template is None:
+            logger.debug(f"Template '{template_name}' not loaded")
+            return None
+
+        th, tw = template.shape[:2]
+        sh, sw = screenshot.shape[:2]
+
+        if th > sh or tw > sw:
+            logger.debug(f"Template '{template_name}' is larger than screenshot; skipping")
+            return None
+
+        result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
+
+        # Find the single best match.
+        _, max_val, _, max_loc = cv2.minMaxLoc(result)
+
+        if max_val < self._confidence:
+            return None
+
+        x, y = max_loc
+        return MatchResult(
+            name=template_name,
+            x=x + tw // 2,
+            y=y + th // 2,
+            confidence=float(max_val),
+            bounds=(x, y, tw, th),
+        )
 
     # ------------------------------------------------------------------
     # Runtime template management

@@ -275,22 +275,31 @@ class ParentAgent(BaseAgent):
             self._publish_result(False, target)
             return
 
-        # ── 2. Capture screen (fast — no window hiding) ──────────────
-        try:
-            screenshot = self._capturer.capture()
-        except Exception:
-            logger.warning("[Cmd] Failed to capture screenshot")
-            self._publish_result(False, display_name)
-            return
+        # ── 2. Get screenshot — reuse latest frame if fresh ──────────
+        screenshot = None
+        latest_state = self._tracker.current()
+        if latest_state is not None and latest_state.screenshot is not None:
+            from datetime import datetime as _datetime
+            age_ms = (_datetime.now() - latest_state.timestamp).total_seconds() * 1000
+            if age_ms < 300:  # Frame less than 300ms old — reuse it.
+                screenshot = latest_state.screenshot
+                logger.debug(f"[Cmd] Reusing frame ({age_ms:.0f}ms old)")
 
-        # ── 3. Match template on screen ─────────────────────────────
-        match = self._matcher.find(screenshot, template_id)
+        if screenshot is None:
+            try:
+                screenshot = self._capturer._capture_via_mss()
+            except Exception:
+                logger.warning("[Cmd] Failed to capture screenshot")
+                self._publish_result(False, display_name)
+                return
+
+        # ── 3. Match template (single-template fast path) ───────────
+        match = self._matcher.find_one(screenshot, template_id)
         if match is None:
             logger.warning(
                 f"[Cmd] Template '{template_id}' not found on screen. "
                 f"Confidence threshold: {self._matcher._confidence}"
             )
-            self._save_debug_image(screenshot, None, display_name, template_id)
             self._publish_result(False, display_name)
             return
 
@@ -302,10 +311,7 @@ class ParentAgent(BaseAgent):
         else:
             screen_x, screen_y = match.center
 
-        # ── 5. Save debug image ─────────────────────────────────────
-        self._save_debug_image(screenshot, match, display_name, template_id)
-
-        # ── 6. CLICK! ──────────────────────────────────────────────
+        # ── 5. CLICK! ───────────────────────────────────────────────
         logger.info(
             f"[Cmd] CLICK '{display_name}' at screen ({screen_x}, {screen_y}), "
             f"confidence={match.confidence:.2f}"
@@ -319,7 +325,7 @@ class ParentAgent(BaseAgent):
             logger.exception(f"[Cmd] Click failed at ({screen_x}, {screen_y})")
             self._publish_result(False, display_name)
 
-        # ── 7. Return focus to the game ─────────────────────────────
+        # ── 6. Return focus to the game (no sleep — SetForegroundWindow only) ──
         self._capturer.bring_to_front()
 
     # ------------------------------------------------------------------
