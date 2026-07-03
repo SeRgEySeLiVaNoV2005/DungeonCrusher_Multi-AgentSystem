@@ -570,8 +570,24 @@ class _ReviewHandler(BaseHTTPRequestHandler):
             self._send_json({"ok": False, "error": "Failed to capture screen"}, 500)
             return
 
-        # 3. Template match.
-        match = self.matcher.find(screenshot, record.id)
+        # 3. Template match — try with a lower threshold first for debugging.
+        saved_confidence = self.matcher._confidence
+        self.matcher._confidence = 0.4
+        try:
+            all_matches = self.matcher.find_all(screenshot)
+        finally:
+            self.matcher._confidence = saved_confidence
+
+        # Find the requested template among the results.
+        match = None
+        for m in all_matches:
+            if m.name == record.id:
+                match = m
+                break
+
+        # Collect top matches for debugging.
+        top_matches = all_matches[:5]
+        debug_info = [f"{m.name}: {m.confidence:.2f}" for m in top_matches]
 
         # 4. Draw red highlight.
         image = screenshot.copy()
@@ -588,7 +604,7 @@ class _ReviewHandler(BaseHTTPRequestHandler):
         _, buf = cv2.imencode(".png", image)
         img_b64 = base64.b64encode(buf).decode("ascii")
 
-        # 6. Also save to disk for the /api/debug-image fallback.
+        # 6. Also save to disk.
         from pathlib import Path
         debug_dir = Path("resources")
         debug_dir.mkdir(parents=True, exist_ok=True)
@@ -603,7 +619,8 @@ class _ReviewHandler(BaseHTTPRequestHandler):
                 f"confidence={match.confidence:.2f}"
             )
         else:
-            msg = f"Template '{record.id}' not found on screen"
+            tops = "; ".join(debug_info) if debug_info else "nothing at all"
+            msg = f"'{record.name}' not matched. Top matches (thresh=0.4): {tops}"
 
         logger.info(f"[WebReview] Command: {msg}")
         self._send_json({
