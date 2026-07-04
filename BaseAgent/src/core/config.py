@@ -91,14 +91,14 @@ class AutomaticLevelingConfig:
     idle_timeout_seconds: int = 60
     """Seconds of user inactivity before leveling may begin."""
 
-    scroll_clicks: int = 3
+    scroll_clicks: int = 2
     """Number of mouse-wheel clicks per scroll step."""
 
-    scroll_delay: float = 0.3
+    scroll_delay: float = 0.10
     """Delay (seconds) after each scroll for the UI to update."""
 
-    scan_interval_frames: int = 3
-    """Frames to wait between scan attempts."""
+    scan_interval_frames: int = 4
+    """Frames to wait between scan attempts (4 = ~400ms at 10 FPS)."""
 
     level_up_wait: float = 0.5
     """Wait (seconds) after clicking level-up for the animation."""
@@ -109,7 +109,7 @@ class AutomaticLevelingConfig:
     navigate_check_frames: int = 15
     """Frames to wait for the Heroes tab to appear before giving up."""
 
-    max_scrolls: int = 30
+    max_scrolls: int = 100
     """Max scroll attempts before declaring the list fully scanned."""
 
     red_template: str = "prokachka"
@@ -124,7 +124,7 @@ class AutomaticLevelingConfig:
     end_template: str = "End"
     """Template name for the end-of-list marker in the Heroes tab."""
 
-    stuck_threshold: int = 4
+    stuck_threshold: int = 8
     """Number of consecutive unchanged frames before declaring stuck (reverses scroll)."""
 
     cursor_takeover_distance: int = 80
@@ -261,18 +261,18 @@ def load_config(path: Optional[str] = None) -> Settings:
         ),
         automatic_leveling=AutomaticLevelingConfig(
             idle_timeout_seconds=leveling_raw.get("idle_timeout_seconds", 60),
-            scroll_clicks=leveling_raw.get("scroll_clicks", 3),
-            scroll_delay=leveling_raw.get("scroll_delay", 0.3),
-            scan_interval_frames=leveling_raw.get("scan_interval_frames", 3),
+            scroll_clicks=leveling_raw.get("scroll_clicks", 2),
+            scroll_delay=leveling_raw.get("scroll_delay", 0.10),
+            scan_interval_frames=leveling_raw.get("scan_interval_frames", 4),
             level_up_wait=leveling_raw.get("level_up_wait", 0.5),
             scroll_up_after_click=leveling_raw.get("scroll_up_after_click", 12),
             navigate_check_frames=leveling_raw.get("navigate_check_frames", 15),
-            max_scrolls=leveling_raw.get("max_scrolls", 30),
+            max_scrolls=leveling_raw.get("max_scrolls", 100),
             red_template=leveling_raw.get("red_template", "prokachka"),
             gray_template=leveling_raw.get("gray_template", "seraya_knopka"),
             hire_template=leveling_raw.get("hire_template", "nanyat"),
             end_template=leveling_raw.get("end_template", "End"),
-            stuck_threshold=leveling_raw.get("stuck_threshold", 4),
+            stuck_threshold=leveling_raw.get("stuck_threshold", 8),
             cursor_takeover_distance=leveling_raw.get("cursor_takeover_distance", 80),
         ),
         logging=LoggingConfig(
