@@ -250,12 +250,12 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         self._current_screenshot = screenshot
 
         # --- Cursor takeover detection ---
-        # Grace period: skip check for a few frames after agent clicks,
+        # Only active during SCANNING/LEVELING — NAVIGATING is excluded
         # because the game may hide/move the cursor during transitions.
+        # Grace period: skip check for N frames after agent clicks.
         if self._takeover_grace_frames > 0:
             self._takeover_grace_frames -= 1
         elif self._fsm.current in (
-            LevelingState.NAVIGATING.value,
             LevelingState.SCANNING.value,
             LevelingState.LEVELING.value,
         ) and self._last_agent_cursor is not None:
@@ -596,7 +596,7 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
                     WaitAction(0.5),
                 )
                 self._last_agent_cursor = (match.center[0], match.center[1])
-                self._takeover_grace_frames = 3
+                self._takeover_grace_frames = 15
             elif self._any_hero_button_visible():
                 logger.info(
                     "[Leveling] 'geroi' not matched but hero buttons visible "
@@ -704,7 +704,7 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
                     WaitAction(self._cfg.level_up_wait),
                 )
                 self._last_agent_cursor = (cx, cy)
-                self._takeover_grace_frames = 3
+                self._takeover_grace_frames = 15
             else:
                 self._total_levels += 1
                 logger.info(
@@ -716,7 +716,7 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
                     WaitAction(self._cfg.level_up_wait),
                 )
                 self._last_agent_cursor = (cx, cy)
-                self._takeover_grace_frames = 3
+                self._takeover_grace_frames = 15
             self._current_level_button = None
 
         # Continue scanning down from current position — no scroll-up.
