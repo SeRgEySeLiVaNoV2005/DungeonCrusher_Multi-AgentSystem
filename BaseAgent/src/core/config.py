@@ -127,9 +127,8 @@ class AutomaticLevelingConfig:
     stuck_threshold: int = 8
     """Number of consecutive unchanged frames before declaring stuck (reverses scroll)."""
 
-    cursor_takeover_distance: int = 80
-    """Distance (px) the user must move the cursor from the agent's last position
-    to trigger a cursor-takeover stop."""
+    cursor_takeover_distance: int = 50
+    """Max cursor movement (px) between frames before treating as user takeover."""
 
 
 @dataclass
@@ -273,7 +272,7 @@ def load_config(path: Optional[str] = None) -> Settings:
             hire_template=leveling_raw.get("hire_template", "nanyat"),
             end_template=leveling_raw.get("end_template", "End"),
             stuck_threshold=leveling_raw.get("stuck_threshold", 8),
-            cursor_takeover_distance=leveling_raw.get("cursor_takeover_distance", 80),
+            cursor_takeover_distance=leveling_raw.get("cursor_takeover_distance", 50),
         ),
         logging=LoggingConfig(
             level=logging_raw.get("level", "INFO"),

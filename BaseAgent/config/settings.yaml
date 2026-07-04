@@ -77,7 +77,7 @@ automatic_leveling:
   navigate_check_frames: 15
   max_scrolls: 100
   stuck_threshold: 8
-  cursor_takeover_distance: 200
+  cursor_takeover_distance: 50
   red_template: "prokachka"
   gray_template: "seraya_knopka"
   hire_template: "nanyat"

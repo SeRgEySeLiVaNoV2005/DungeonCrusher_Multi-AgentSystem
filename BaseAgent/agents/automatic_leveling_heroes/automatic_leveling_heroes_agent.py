@@ -172,9 +172,10 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         self._stuck_counter: int = 0
         self._last_button_signature: Optional[tuple] = None
 
-        # Cursor takeover detection.
-        self._last_agent_cursor: Optional[tuple] = None
-        self._takeover_grace_frames: int = 0  # Skip check for N frames after agent click.
+        # Cursor takeover detection — frame-to-frame movement tracking.
+        # Detects active user mouse movement, NOT absolute cursor position.
+        self._prev_cursor_pos: Optional[tuple] = None
+        self._agent_just_clicked: bool = False
 
         # Stats.
         self._total_hires: int = 0
@@ -249,36 +250,34 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
 
         self._current_screenshot = screenshot
 
-        # --- Cursor takeover detection ---
-        # Only active during SCANNING/LEVELING — NAVIGATING is excluded
-        # because the game may hide/move the cursor during transitions.
-        # Grace period: skip check for N frames after agent clicks.
-        if self._takeover_grace_frames > 0:
-            self._takeover_grace_frames -= 1
-        elif self._fsm.current in (
+        # --- Cursor takeover detection (frame-to-frame movement) ---
+        # Only active during SCANNING/LEVELING.  Detects when the USER
+        # actively moves the mouse — not where the cursor happens to be.
+        if self._fsm.current in (
             LevelingState.SCANNING.value,
             LevelingState.LEVELING.value,
-        ) and self._last_agent_cursor is not None:
+        ):
             try:
                 cur_x, cur_y = get_cursor_position()
-                # Ignore implausible cursor positions (0,0 = likely hidden).
                 if cur_x == 0 and cur_y == 0:
-                    pass
-                else:
-                    # Convert window-relative agent position to absolute screen.
-                    metadata = getattr(state, "metadata", None) or {}
-                    region = metadata.get("window_region")
-                    if region:
-                        agent_abs_x = region["left"] + self._last_agent_cursor[0]
-                        agent_abs_y = region["top"] + self._last_agent_cursor[1]
-                        dist = ((cur_x - agent_abs_x) ** 2 + (cur_y - agent_abs_y) ** 2) ** 0.5
-                        if dist > self._cfg.cursor_takeover_distance:
-                            logger.info(
-                                f"[Leveling] Cursor takeover detected "
-                                f"(cursor moved {dist:.0f}px from agent position) — stopping"
-                            )
-                            self._fsm.force(LevelingState.IDLE.value)
-                            return
+                    pass  # Hidden cursor — ignore.
+                elif self._agent_just_clicked:
+                    # Agent moved the cursor — jump is expected, just update.
+                    self._prev_cursor_pos = (cur_x, cur_y)
+                    self._agent_just_clicked = False
+                elif self._prev_cursor_pos is not None:
+                    px, py = self._prev_cursor_pos
+                    dist = ((cur_x - px) ** 2 + (cur_y - py) ** 2) ** 0.5
+                    if dist > self._cfg.cursor_takeover_distance:
+                        logger.info(
+                            f"[Leveling] Cursor takeover detected "
+                            f"(cursor moved {dist:.0f}px between frames) — stopping"
+                        )
+                        self._fsm.force(LevelingState.IDLE.value)
+                        return
+                    # Gradual drift — update baseline.
+                    if dist > 2:
+                        self._prev_cursor_pos = (cur_x, cur_y)
             except Exception:
                 pass  # get_cursor_position may fail if pynput is unavailable.
 
@@ -316,8 +315,8 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         self._scrolled_to_top = False
         self._stuck_counter = 0
         self._last_button_signature = None
-        self._last_agent_cursor = None
-        self._takeover_grace_frames = 0
+        self._prev_cursor_pos = None
+        self._agent_just_clicked = False
         self._fsm.force(LevelingState.IDLE.value)
 
     # ------------------------------------------------------------------
@@ -565,8 +564,8 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
     def _on_idle_enter(self) -> None:
         self._stuck_counter = 0
         self._last_button_signature = None
-        self._last_agent_cursor = None
-        self._takeover_grace_frames = 0
+        self._prev_cursor_pos = None
+        self._agent_just_clicked = False
         logger.debug("[Leveling] Entering IDLE")
 
     def _on_idle_update(self) -> None:
@@ -595,8 +594,7 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
                     ClickAction(match.center[0], match.center[1]),
                     WaitAction(0.5),
                 )
-                self._last_agent_cursor = (match.center[0], match.center[1])
-                self._takeover_grace_frames = 15
+                self._agent_just_clicked = True
             elif self._any_hero_button_visible():
                 logger.info(
                     "[Leveling] 'geroi' not matched but hero buttons visible "
@@ -703,8 +701,7 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
                     ClickAction(cx, cy),
                     WaitAction(self._cfg.level_up_wait),
                 )
-                self._last_agent_cursor = (cx, cy)
-                self._takeover_grace_frames = 15
+                self._agent_just_clicked = True
             else:
                 self._total_levels += 1
                 logger.info(
@@ -715,8 +712,7 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
                     ClickAction(cx, cy),
                     WaitAction(self._cfg.level_up_wait),
                 )
-                self._last_agent_cursor = (cx, cy)
-                self._takeover_grace_frames = 15
+                self._agent_just_clicked = True
             self._current_level_button = None
 
         # Continue scanning down from current position — no scroll-up.
