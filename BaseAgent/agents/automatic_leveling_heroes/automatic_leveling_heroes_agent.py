@@ -516,17 +516,17 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
             return False
 
         if self._pass == 1:
-            # Hire pass — only hire buttons.
-            match = self._matcher.find_one(
-                self._current_screenshot, self._cfg.hire_template
-            )
+            tpl = self._cfg.hire_template
         else:
-            # Level pass — only red buttons.
-            match = self._matcher.find_one(
-                self._current_screenshot, self._cfg.red_template
-            )
+            tpl = self._cfg.red_template
 
+        match = self._matcher.find_one(self._current_screenshot, tpl)
         if match is not None:
+            logger.info(
+                f"[Leveling] Button '{tpl}' FOUND at "
+                f"({match.center[0]}, {match.center[1]}) "
+                f"confidence={match.confidence:.2f}"
+            )
             self._current_level_button = match
             return True
         return False
@@ -661,23 +661,12 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
     def _on_scanning_update(self) -> None:
         self._scan_countdown -= 1
         if self._scan_countdown <= 0:
-            # --- Stuck detection: compare button signature before scrolling ---
-            sig = self._capture_button_signature()
-            if sig and sig == self._last_button_signature:
-                self._stuck_counter += 1
-                if self._stuck_counter >= self._cfg.stuck_threshold:
-                    logger.info(
-                        f"[Leveling] Stuck detected ({self._stuck_counter} "
-                        f"unchanged frames) — reversing direction"
-                    )
-                    self._scroll_direction *= -1
-                    self._scroll_count = 0
-                    self._stuck_counter = 0
-            else:
-                self._stuck_counter = 0
-            self._last_button_signature = sig
-
             self._scroll_count += 1
+            direction = "↓" if self._scroll_direction == -1 else "↑"
+            logger.info(
+                f"[Leveling] Scroll #{self._scroll_count} {direction} "
+                f"(pass {self._pass}, dir={self._scroll_direction})"
+            )
             self.request_action(
                 ScrollAction(
                     dy=self._scroll_direction,
