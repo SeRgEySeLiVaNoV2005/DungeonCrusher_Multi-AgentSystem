@@ -172,10 +172,12 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         self._stuck_counter: int = 0
         self._last_button_signature: Optional[tuple] = None
 
-        # Cursor takeover detection — frame-to-frame movement tracking.
-        # Detects active user mouse movement, NOT absolute cursor position.
+        # Cursor takeover detection — requires sustained movement over
+        # multiple frames to distinguish user from game cursor teleports.
         self._prev_cursor_pos: Optional[tuple] = None
         self._agent_just_clicked: bool = False
+        self._cursor_movement_streak: int = 0
+        self._cursor_check_countdown: int = 0
 
         # Stats.
         self._total_hires: int = 0
@@ -250,9 +252,10 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
 
         self._current_screenshot = screenshot
 
-        # --- Cursor takeover detection (frame-to-frame movement) ---
-        # Only active during SCANNING/LEVELING.  Detects when the USER
-        # actively moves the mouse — not where the cursor happens to be.
+        # --- Cursor takeover detection (sustained movement) ---
+        # Only active during SCANNING/LEVELING.  Requires TWO consecutive
+        # checks with significant movement — a single large jump is a game
+        # cursor teleport, not user input.
         if self._fsm.current in (
             LevelingState.SCANNING.value,
             LevelingState.LEVELING.value,
@@ -260,26 +263,32 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
             try:
                 cur_x, cur_y = get_cursor_position()
                 if cur_x == 0 and cur_y == 0:
-                    pass  # Hidden cursor — ignore.
+                    pass  # Hidden cursor — ignore, reset streak.
+                    self._cursor_movement_streak = 0
                 elif self._agent_just_clicked:
-                    # Agent moved the cursor — jump is expected, just update.
                     self._prev_cursor_pos = (cur_x, cur_y)
                     self._agent_just_clicked = False
+                    self._cursor_movement_streak = 0
+                    self._cursor_check_countdown = 3  # Start checking in 3 frames.
+                elif self._cursor_check_countdown > 0:
+                    self._cursor_check_countdown -= 1
                 elif self._prev_cursor_pos is not None:
                     px, py = self._prev_cursor_pos
                     dist = ((cur_x - px) ** 2 + (cur_y - py) ** 2) ** 0.5
+                    self._prev_cursor_pos = (cur_x, cur_y)
                     if dist > self._cfg.cursor_takeover_distance:
-                        logger.info(
-                            f"[Leveling] Cursor takeover detected "
-                            f"(cursor moved {dist:.0f}px between frames) — stopping"
-                        )
-                        self._fsm.force(LevelingState.IDLE.value)
-                        return
-                    # Gradual drift — update baseline.
-                    if dist > 2:
-                        self._prev_cursor_pos = (cur_x, cur_y)
+                        self._cursor_movement_streak += 1
+                        if self._cursor_movement_streak >= 2:
+                            logger.info(
+                                f"[Leveling] Cursor takeover detected "
+                                f"(sustained movement over {self._cursor_movement_streak} checks) — stopping"
+                            )
+                            self._fsm.force(LevelingState.IDLE.value)
+                            return
+                    else:
+                        self._cursor_movement_streak = max(0, self._cursor_movement_streak - 1)
             except Exception:
-                pass  # get_cursor_position may fail if pynput is unavailable.
+                pass
 
         self._fsm.update()
 
@@ -317,6 +326,8 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         self._last_button_signature = None
         self._prev_cursor_pos = None
         self._agent_just_clicked = False
+        self._cursor_movement_streak = 0
+        self._cursor_check_countdown = 0
         self._fsm.force(LevelingState.IDLE.value)
 
     # ------------------------------------------------------------------
@@ -566,6 +577,8 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         self._last_button_signature = None
         self._prev_cursor_pos = None
         self._agent_just_clicked = False
+        self._cursor_movement_streak = 0
+        self._cursor_check_countdown = 0
         logger.debug("[Leveling] Entering IDLE")
 
     def _on_idle_update(self) -> None:
