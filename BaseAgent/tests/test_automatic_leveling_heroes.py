@@ -84,6 +84,8 @@ def agent(bus, matcher) -> AutomaticLevelingHeroesAgent:
         level_up_wait=0.01,
         navigate_check_frames=5,
         max_scrolls=5,
+        stuck_threshold=10,
+        cursor_takeover_distance=99999,  # Disable takeover in tests.
         red_template="prokachka",
         gray_template="prokachka_gray",
         hire_template="HiringHero",

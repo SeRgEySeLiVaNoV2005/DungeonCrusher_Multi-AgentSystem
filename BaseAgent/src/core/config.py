@@ -124,6 +124,13 @@ class AutomaticLevelingConfig:
     end_template: str = "End"
     """Template name for the end-of-list marker in the Heroes tab."""
 
+    stuck_threshold: int = 4
+    """Number of consecutive unchanged frames before declaring stuck (reverses scroll)."""
+
+    cursor_takeover_distance: int = 80
+    """Distance (px) the user must move the cursor from the agent's last position
+    to trigger a cursor-takeover stop."""
+
 
 @dataclass
 class WebReviewConfig:
@@ -265,6 +272,8 @@ def load_config(path: Optional[str] = None) -> Settings:
             gray_template=leveling_raw.get("gray_template", "seraya_knopka"),
             hire_template=leveling_raw.get("hire_template", "nanyat"),
             end_template=leveling_raw.get("end_template", "End"),
+            stuck_threshold=leveling_raw.get("stuck_threshold", 4),
+            cursor_takeover_distance=leveling_raw.get("cursor_takeover_distance", 80),
         ),
         logging=LoggingConfig(
             level=logging_raw.get("level", "INFO"),

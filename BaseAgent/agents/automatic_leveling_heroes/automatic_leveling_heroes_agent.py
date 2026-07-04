@@ -60,7 +60,7 @@ from src.communication.message_bus import Message, MessageType
 from src.core.config import AutomaticLevelingConfig
 from src.core.logger import get_logger
 from src.core.state_machine import StateMachine
-from src.input.emulator import ClickAction, ScrollAction, WaitAction
+from src.input.emulator import ClickAction, ScrollAction, WaitAction, get_cursor_position
 from src.vision.template_matcher import MatchResult, TemplateMatcher
 
 logger = get_logger(__name__)
@@ -168,6 +168,14 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         self._scrolled_to_top: bool = False  # Initial scroll-up flag.
         self._scroll_direction: int = -1  # -1 = down, +1 = up
 
+        # Stuck detection.
+        self._stuck_counter: int = 0
+        self._last_button_signature: Optional[tuple] = None
+
+        # Cursor takeover detection.
+        self._last_agent_cursor: Optional[tuple] = None
+        self._takeover_grace_frames: int = 0  # Skip check for N frames after agent click.
+
         # Stats.
         self._total_hires: int = 0
         self._total_levels: int = 0
@@ -240,6 +248,40 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
             return
 
         self._current_screenshot = screenshot
+
+        # --- Cursor takeover detection ---
+        # Grace period: skip check for a few frames after agent clicks,
+        # because the game may hide/move the cursor during transitions.
+        if self._takeover_grace_frames > 0:
+            self._takeover_grace_frames -= 1
+        elif self._fsm.current in (
+            LevelingState.NAVIGATING.value,
+            LevelingState.SCANNING.value,
+            LevelingState.LEVELING.value,
+        ) and self._last_agent_cursor is not None:
+            try:
+                cur_x, cur_y = get_cursor_position()
+                # Ignore implausible cursor positions (0,0 = likely hidden).
+                if cur_x == 0 and cur_y == 0:
+                    pass
+                else:
+                    # Convert window-relative agent position to absolute screen.
+                    metadata = getattr(state, "metadata", None) or {}
+                    region = metadata.get("window_region")
+                    if region:
+                        agent_abs_x = region["left"] + self._last_agent_cursor[0]
+                        agent_abs_y = region["top"] + self._last_agent_cursor[1]
+                        dist = ((cur_x - agent_abs_x) ** 2 + (cur_y - agent_abs_y) ** 2) ** 0.5
+                        if dist > self._cfg.cursor_takeover_distance:
+                            logger.info(
+                                f"[Leveling] Cursor takeover detected "
+                                f"(cursor moved {dist:.0f}px from agent position) — stopping"
+                            )
+                            self._fsm.force(LevelingState.IDLE.value)
+                            return
+            except Exception:
+                pass  # get_cursor_position may fail if pynput is unavailable.
+
         self._fsm.update()
 
     # ------------------------------------------------------------------
@@ -272,6 +314,10 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         self._pass = 1
         self._scroll_direction = -1
         self._scrolled_to_top = False
+        self._stuck_counter = 0
+        self._last_button_signature = None
+        self._last_agent_cursor = None
+        self._takeover_grace_frames = 0
         self._fsm.force(LevelingState.IDLE.value)
 
     # ------------------------------------------------------------------
@@ -383,7 +429,13 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         return True
 
     def _guard_heroes_tab_visible(self) -> bool:
-        """True if the ``geroi`` template matches on the current screen."""
+        """True if the ``geroi`` template matches, OR hero-list buttons are visible.
+
+        Fallback: when the Heroes tab is already selected it turns yellow,
+        so the default ``geroi`` template won't match.  Instead we check
+        whether any hero-list buttons (level-up, hire, end marker) are
+        visible — if they are, the tab is open.
+        """
         if self._current_screenshot is None:
             return False
         match = self._matcher.find_one(self._current_screenshot, "geroi")
@@ -393,6 +445,24 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
                 f"confidence={match.confidence:.2f}"
             )
             return True
+        # Fallback: tab already selected (yellow) → check for hero-list content.
+        if self._any_hero_button_visible():
+            logger.info("[Leveling] geroi tab not matched, but hero buttons visible — tab is open")
+            return True
+        return False
+
+    def _any_hero_button_visible(self) -> bool:
+        """Return True if any hero-list button is visible on screen.
+
+        Checks all four hero-list templates: level-up (red/gray),
+        hire (purple), and end-of-list marker.
+        """
+        if self._current_screenshot is None:
+            return False
+        for tpl in (self._cfg.red_template, self._cfg.gray_template,
+                     self._cfg.hire_template, self._cfg.end_template):
+            if self._matcher.find_one(self._current_screenshot, tpl) is not None:
+                return True
         return False
 
     def _guard_navigate_timeout(self) -> bool:
@@ -493,6 +563,10 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
     # ------------------------------------------------------------------
 
     def _on_idle_enter(self) -> None:
+        self._stuck_counter = 0
+        self._last_button_signature = None
+        self._last_agent_cursor = None
+        self._takeover_grace_frames = 0
         logger.debug("[Leveling] Entering IDLE")
 
     def _on_idle_update(self) -> None:
@@ -521,6 +595,14 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
                     ClickAction(match.center[0], match.center[1]),
                     WaitAction(0.5),
                 )
+                self._last_agent_cursor = (match.center[0], match.center[1])
+                self._takeover_grace_frames = 3
+            elif self._any_hero_button_visible():
+                logger.info(
+                    "[Leveling] 'geroi' not matched but hero buttons visible "
+                    "— tab already open, skipping to SCANNING"
+                )
+                self._fsm.force(LevelingState.SCANNING.value)
             else:
                 logger.warning(
                     "[Leveling] 'geroi' template not found on screen "
@@ -533,6 +615,25 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
     # ------------------------------------------------------------------
     # SCANNING
     # ------------------------------------------------------------------
+
+    def _capture_button_signature(self) -> tuple:
+        """Return a hashable signature of visible hero-list button positions.
+
+        Used for stuck detection — if the signature doesn't change after
+        scrolling, the list has rubber-banded and we're at a boundary.
+        """
+        if self._current_screenshot is None:
+            return ()
+        positions = []
+        for tpl in (self._cfg.red_template, self._cfg.gray_template,
+                     self._cfg.hire_template, self._cfg.end_template):
+            match = self._matcher.find_one(self._current_screenshot, tpl)
+            if match is not None:
+                # Round to nearest 5 px to tolerate minor jitter.
+                x = (match.center[0] // 5) * 5
+                y = (match.center[1] // 5) * 5
+                positions.append((tpl, x, y))
+        return tuple(sorted(positions))
 
     def _on_scanning_enter(self) -> None:
         self._scan_countdown = self._cfg.scan_interval_frames
@@ -549,6 +650,22 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
     def _on_scanning_update(self) -> None:
         self._scan_countdown -= 1
         if self._scan_countdown <= 0:
+            # --- Stuck detection: compare button signature before scrolling ---
+            sig = self._capture_button_signature()
+            if sig and sig == self._last_button_signature:
+                self._stuck_counter += 1
+                if self._stuck_counter >= self._cfg.stuck_threshold:
+                    logger.info(
+                        f"[Leveling] Stuck detected ({self._stuck_counter} "
+                        f"unchanged frames) — reversing direction"
+                    )
+                    self._scroll_direction *= -1
+                    self._scroll_count = 0
+                    self._stuck_counter = 0
+            else:
+                self._stuck_counter = 0
+            self._last_button_signature = sig
+
             self._scroll_count += 1
             self.request_action(
                 ScrollAction(
@@ -586,6 +703,8 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
                     ClickAction(cx, cy),
                     WaitAction(self._cfg.level_up_wait),
                 )
+                self._last_agent_cursor = (cx, cy)
+                self._takeover_grace_frames = 3
             else:
                 self._total_levels += 1
                 logger.info(
@@ -596,6 +715,8 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
                     ClickAction(cx, cy),
                     WaitAction(self._cfg.level_up_wait),
                 )
+                self._last_agent_cursor = (cx, cy)
+                self._takeover_grace_frames = 3
             self._current_level_button = None
 
         # Continue scanning down from current position — no scroll-up.

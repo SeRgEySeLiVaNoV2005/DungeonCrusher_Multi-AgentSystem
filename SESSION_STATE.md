@@ -8,7 +8,7 @@
 
 - **Локально:** `C:\Users\dog24\Desktop\Агенты_для_крушителей_подземелий\`
 - **GitHub:** `git@github.com:SeRgEySeLiVaNoV2005/DungeonCrusher_Multi-AgentSystem.git`
-- **Ветка:** `framework-base` (запушена, 18 коммитов)
+- **Ветка:** `framework-base` (запушена, 21 коммит)
 
 ## Структура проекта (актуальная)
 
@@ -45,8 +45,8 @@
     │   ├── ui/            # command_overlay.py
     │   └── launcher/      # launcher.py (CLI)
     ├── config/settings.yaml
-    ├── tests/             # 104 теста (16 core + 22 tooltip + 19 sm + 22 combat + 25 leveling)
-    └── resources/templates/  # 14 PNG-шаблонов UI-кнопок
+    ├── tests/             # 113 тестов (16 core + 22 tooltip + 19 sm + 22 combat + 34 leveling)
+    └── resources/templates/  # 18 PNG-шаблонов UI-кнопок
 ```
 
 ## Хронология
@@ -90,7 +90,7 @@
 
 ### Этап 6: AutomaticLevelingHeroesAgent (2026-07-04 — ТЕКУЩИЙ)
 - **ScrollAction** — скролл колёсиком мыши (pynput)
-- **AGENT_STATUS** / **SYSTEM_TRIGGER_LEVELING** — новые типы сообщений
+- **AGENT_STATUS** / **SYSTEM_TRIGGER_LEVELING** / **SYSTEM_STOP_LEVELING** — новые типы сообщений
 - **Multi-scale template matching** — 3 шкалы (1.0, 0.94, 1.06) + early exit на 1.0×
 - **ParentAgent координаты** — конвертация window-relative → абсолютные экранные
 - **CombatAgent** публикует AGENT_STATUS
@@ -98,16 +98,16 @@
   - 5 состояний: IDLE → NAVIGATING → SCANNING → LEVELING → DONE
   - Win32 GetLastInputInfo для idle detection
   - Двухпроходная стратегия: pass 1 (наём `nanyat`) → pass 2 (прокачка `prokachka`)
-  - Команда `levelup` в оверлее и консоли
-  - 17 шаблонов загружено, 105 тестов
+  - **Двунаправленный скролл**: вниз до `End.png` → разворот вверх → снова вниз
+  - Команда `levelup` — ручной запуск, команда `stop` — остановка в IDLE
+  - 18 шаблонов загружено, 113 тестов (34 leveling)
   - Подписка на AGENT_STATUS для отслеживания занятости других агентов
-  - Скролл списка героев + поиск трёх типов кнопок:
+  - Скролл списка героев + поиск четырёх типов кнопок:
     - 🔴 `prokachka.png` — красная (прокачка доступна)
     - 🟣 `HiringHero.png` — фиолетовая (наём героя)
     - ⚫ `prokachka_gray.png` — серая (недоступна)
-  - Сброс позиции скролла после прокачки (герой улетает наверх)
+    - 🏁 `End.png` — конец списка (разворот скролла)
   - Включен в лаунчере по умолчанию
-  - 26 тестов
 
 ## Коммиты (последние)
 
