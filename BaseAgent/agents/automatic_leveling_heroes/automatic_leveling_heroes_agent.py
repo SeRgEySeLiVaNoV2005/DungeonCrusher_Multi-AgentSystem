@@ -495,11 +495,11 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         .. note::
 
             The End.png template is large (520×443), making multi-scale
-            template matching expensive (~2 s).  This guard is therefore
-            only evaluated every ``END_CHECK_INTERVAL`` frames.
+            template matching expensive (~2 s).  The screen is static
+            between scrolls — checked once per cycle on the first frame
+            after a scroll (countdown == scan_interval_frames - 1).
         """
-        END_CHECK_INTERVAL = 8
-        if self._frame_count % END_CHECK_INTERVAL != 0:
+        if self._scan_countdown != self._cfg.scan_interval_frames - 1:
             return False
         if self._scroll_direction != -1:
             return False
@@ -529,11 +529,15 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
 
         .. note::
 
-            Button templates are ~180×74 px — moderate cost for multi-scale
-            matching.  Checked every 2nd frame to halve CPU usage.
+            The screen is static between scrolls, so we only check on the
+            first frame after a scroll (countdown == 4).  Button templates
+            are ~180×74 px — multi-scale matching takes ~1.5 s when no
+            match is found (all 3 scales tried) and ~0.1 s on hit (early
+            exit at 1.0×).
         """
-        BUTTON_CHECK_INTERVAL = 2
-        if self._frame_count % BUTTON_CHECK_INTERVAL != 0:
+        # Screen is static between scrolls — only check on the first frame
+        # after a scroll (countdown just decremented from N to N-1).
+        if self._scan_countdown != self._cfg.scan_interval_frames - 1:
             return False
         if self._current_screenshot is None:
             return False
