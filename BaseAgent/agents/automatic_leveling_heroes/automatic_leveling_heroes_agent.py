@@ -497,9 +497,13 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
             The End.png template is large (520×443), making multi-scale
             template matching expensive (~2 s).  The screen is static
             between scrolls — checked once per cycle on the first frame
-            after a scroll (countdown == scan_interval_frames - 1).
+            after a scroll, and only every 3rd scroll cycle to reduce
+            overhead.
         """
         if self._scan_countdown != self._cfg.scan_interval_frames - 1:
+            return False
+        # End check is expensive — only run every 3rd scroll cycle.
+        if self._scroll_count % 3 != 0:
             return False
         if self._scroll_direction != -1:
             return False
