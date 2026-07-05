@@ -53,6 +53,9 @@ from ctypes import wintypes
 from enum import Enum
 from typing import Optional, Set
 
+# XXX: debug — remove after scroll issue is diagnosed
+_SCROLL_DEBUG = True
+
 import numpy as np
 
 from base.child_agent import ChildAgent
@@ -171,6 +174,9 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         # Stuck detection.
         self._stuck_counter: int = 0
         self._last_button_signature: Optional[tuple] = None
+
+        # Scroll timing (debug).
+        self._last_scroll_time: float = 0.0
 
         # Cursor takeover detection — requires sustained movement over
         # multiple frames to distinguish user from game cursor teleports.
@@ -656,16 +662,35 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
                 ScrollAction(dy=1, amount=self._cfg.scroll_up_after_click),
                 WaitAction(self._cfg.scroll_delay),
             )
-        logger.debug("[Leveling] Entering SCANNING")
+        if _SCROLL_DEBUG:
+            logger.info(
+                "[Leveling] → ENTER SCANNING "
+                f"(countdown={self._scan_countdown}, pass={self._pass}, "
+                f"direction={self._scroll_direction}, scrolls={self._scroll_count})"
+            )
 
     def _on_scanning_update(self) -> None:
         self._scan_countdown -= 1
+        if _SCROLL_DEBUG:
+            # Log every frame to see the countdown ticking.
+            logger.info(
+                f"[Leveling] SCANNING tick frame=#{self._frame_count} "
+                f"countdown={self._scan_countdown}"
+            )
         if self._scan_countdown <= 0:
             self._scroll_count += 1
             direction = "↓" if self._scroll_direction == -1 else "↑"
+            now = time.perf_counter()
+            elapsed = (
+                f"{now - self._last_scroll_time:.3f}s"
+                if hasattr(self, "_last_scroll_time") and self._last_scroll_time
+                else "first"
+            )
+            self._last_scroll_time = now
             logger.info(
                 f"[Leveling] Scroll #{self._scroll_count} {direction} "
-                f"(pass {self._pass}, dir={self._scroll_direction})"
+                f"(pass {self._pass}, dir={self._scroll_direction}) "
+                f"[elapsed={elapsed}, frame={self._frame_count}]"
             )
             self.request_action(
                 ScrollAction(
@@ -687,6 +712,12 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         hero and turns the button red, the second click levels them up
         immediately.  No scroll-back — just continue scanning down.
         """
+        if _SCROLL_DEBUG:
+            logger.info(
+                "[Leveling] → ENTER LEVELING "
+                f"(pass={self._pass}, scrolls={self._scroll_count}, "
+                f"frame={self._frame_count})"
+            )
         button = getattr(self, "_current_level_button", None)
         if button is not None:
             cx, cy = button.center[0], button.center[1]
