@@ -53,8 +53,8 @@ from ctypes import wintypes
 from enum import Enum
 from typing import Optional, Set
 
-# XXX: debug — remove after scroll issue is diagnosed
-_SCROLL_DEBUG = True
+# XXX: toggle to True for verbose per-frame scroll diagnostics
+_SCROLL_DEBUG = False
 
 import numpy as np
 
