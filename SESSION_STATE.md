@@ -124,8 +124,8 @@ a092fc1 fix(cmd): remove 2× downscale that broke template matching
 
 ## Статистика тестов
 
-- **105 тестов**, все проходят
-- 16 test_core, 19 test_state_machine, 22 test_combat_agent, 22 test_tooltip_reader, **26 test_automatic_leveling_heroes**
+- **113 тестов**, все проходят
+- 16 test_core, 19 test_state_machine, 22 test_combat_agent, 22 test_tooltip_reader, **34 test_automatic_leveling_heroes**
 - Пробелы: WindowCapturer (0), InputEmulator (0), TemplateMatcher (0), MessageBus (0), ParentAgent (0)
 
 ## Известные проблемы
@@ -146,9 +146,24 @@ a092fc1 fix(cmd): remove 2× downscale that broke template matching
 6. **ResourceAgent** — сбор золота/душ
 7. **Тесты для инфраструктурных модулей** — хотя бы с моками
 
-## Точка восстановления — конец сеанса 2026-07-03
+## Точка восстановления — конец сеанса 2026-07-05
 
-**Последний коммит:** `aa41c59` feat(agents): add hire button support to LevelingAgent — **16 коммитов total**
+**Последний коммит:** `883b85c` chore(agents): disable _SCROLL_DEBUG verbose logging — **~27 коммитов total**
+
+### Этап 7: Отладка и оптимизация скролла (2026-07-05 — СЕГОДНЯ)
+
+**Проблема:** скроллы происходили каждые ~14 секунд вместо ~400 мс.
+
+**Корень:** `End.png` — шаблон 520×443 px (115 KB), в 17 раз больше остальных (~90×90). `matchTemplate` на скриншоте 1938×1098 занимал ~2.5 сек на каждый кадр. Плюс кнопки (180×74 px) добавляли ещё ~1.3 сек.
+
+**Исправления (5 коммитов):**
+1. `92ab8d8` — Диагностика: `perf_counter` тайминги, per-frame счётчики, ENTER/EXIT логи
+2. `9ecd34b` — Frame-skip: End.png каждые 8 кадров, кнопки каждые 2 кадра → 14s→4s (×3.5)
+3. `0aa1653` — Один guard-чек на цикл (`countdown == N-1`) → 4s→3.3s
+4. `3db7def` — End-check раз в 3 цикла → 3.3s→3.0s
+5. `fc0757a` — **2× downscale скриншота** (1938×1098 → 969×549) — matchTemplate ускорился в 4.8× (0.433s → 0.090s на шкалу)
+
+**Результат:** скроллы каждые **~1.0–1.6 секунд** (было 14s) — **ускорение в 11.5×**.
 
 **Добавлено в этом сеансе:**
 - ✅ AutomaticLevelingHeroesAgent (5-state FSM, Win32 idle detection)
@@ -174,7 +189,7 @@ a092fc1 fix(cmd): remove 2× downscale that broke template matching
 1. Прочитай этот файл (`SESSION_STATE.md`)
 2. Проверь `git status` и `git log --oneline -5`
 3. Лаунчер: `cd BaseAgent && python -m src.launcher`
-4. Продолжай с того места, где остановились
+4. Скролл оптимизирован (1.2s/цикл). Следующие задачи: End.png crop (80×40), stuck detection, боевые шаблоны
 
 ---
 
