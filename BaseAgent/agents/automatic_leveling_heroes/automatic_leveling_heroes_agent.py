@@ -491,7 +491,16 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         Flips scroll direction to up and resets the scroll counter.
         Only fires when scrolling down — prevents re-triggering on the
         way back up.
+
+        .. note::
+
+            The End.png template is large (520×443), making multi-scale
+            template matching expensive (~2 s).  This guard is therefore
+            only evaluated every ``END_CHECK_INTERVAL`` frames.
         """
+        END_CHECK_INTERVAL = 8
+        if self._frame_count % END_CHECK_INTERVAL != 0:
+            return False
         if self._scroll_direction != -1:
             return False
         if self._current_screenshot is None:
@@ -517,7 +526,15 @@ class AutomaticLevelingHeroesAgent(ChildAgent):
         Pass 2 (level): only looks for red level-up buttons.
 
         Caches the match result in ``_current_level_button``.
+
+        .. note::
+
+            Button templates are ~180×74 px — moderate cost for multi-scale
+            matching.  Checked every 2nd frame to halve CPU usage.
         """
+        BUTTON_CHECK_INTERVAL = 2
+        if self._frame_count % BUTTON_CHECK_INTERVAL != 0:
+            return False
         if self._current_screenshot is None:
             return False
 
